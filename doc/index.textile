@@ -1,0 +1,23 @@
+A beginning
+
+Let's start with a minimal program to see what programming the Gamebuino is like.
+
+code.
+#include <Gamebuino.h>
+
+Gamebuino gb;
+
+void setup()
+{
+    gb.begin();
+    gb.titleScreen(F("CRUISER"));
+}
+
+void loop()
+{
+    if (gb.update())
+    {
+        gb.display.print(F("HELLO GAMEBUINO"));
+    }
+}
+
