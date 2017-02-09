@@ -1,9 +1,10 @@
 #include <Gamebuino.h>
-#include <avr/pgmspace.h>
+//#include <avr/pgmspace.h>
 Gamebuino gb;
 
 const float PI2 = PI * 2.0;
 const float PI180 = PI / 180.0;
+const float PI128 = PI / 128.0;
 const float sqrt22 = pow(2.0, 0.5) * 0.5;
 #define MAX_POLYGON_VERTICES 8
 #define MAX_JOB_COUNT 3
@@ -11,9 +12,24 @@ const float sqrt22 = pow(2.0, 0.5) * 0.5;
 #define MAX_RENDER_ADJACENT_SEGMENTS 8
 #define MAX_SHOTS 12
 //#define DEBUG
-//#define SERIAL_DEBUG
 #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
+
+#define SUB_PIXEL_ACCURACY
+
+#ifdef SUB_PIXEL_ACCURACY
+#define FIXED_POINT_SCALE 16
+#else
+#define FIXED_POINT_SCALE 1
+#endif
+
+#ifndef LINE_COORDINATE_TYPE
+#define LINE_COORDINATE_TYPE int
+#endif
+
+#ifndef LOG_ALREADY_DEFINED
+#define LOG
+#endif
 
 #define ROLL_SHIP
 #define WOBBLE_SHIP
@@ -32,7 +48,7 @@ int max_frustum_planes = 0;
 int segments_drawn = 0;
 #endif
 
-typedef struct vec3d
+struct vec3d
 {
   float x, y, z;
   vec3d()
@@ -104,6 +120,16 @@ typedef struct vec3d
     z *= len1;
   }
 
+  void rotate(float yaw)
+  {
+    vec3d temp(x, y, z);
+    float s = sin(yaw);
+    float c = cos(yaw);
+    x = temp.x * c + temp.z * s;
+    y = temp.y;
+    z = temp.x * s + temp.z * c;
+  }
+
   void rotate(float pitch, float yaw)
   {
     vec3d temp(x, y, z);
@@ -146,7 +172,7 @@ typedef struct vec3d
 
 };
 
-typedef struct plane
+struct plane
 {
   vec3d n;
   float d;
@@ -160,7 +186,7 @@ typedef struct plane
   {}
 };
 
-typedef struct polygon
+struct polygon
 {
   byte num_vertices;
   // keep track of which edges are to be drawn
@@ -196,17 +222,30 @@ typedef struct polygon
 
 };
 
-typedef struct segment
+struct segment
 {
   byte floor_height;
   byte ceiling_height;
   byte x, y;
   byte vertex_and_portal_count;
-  byte* vertices;
-  word* portals;
+  const byte* vertices;
+  const word* portals;
 };
 
-typedef struct r_camera
+struct sprite_polygon
+{
+  byte num_vertices;
+  byte draw_edges;
+  const byte* vertices;
+};
+
+struct sprite
+{
+  byte polygon_count;
+  const sprite_polygon* polygons;
+};
+
+struct r_camera
 {
   vec3d at;
   vec3d up;
@@ -223,10 +262,9 @@ typedef struct r_camera
 #ifdef ROLL_SHIP
   float roll_sin, roll_cos;
 #endif
-#ifdef WOBBLE_SHIP
   byte wobble;
+  float wobble_sin;
   float wobble_shift;
-#endif
 
   r_camera()
     : yaw(0.0)
@@ -239,7 +277,7 @@ typedef struct r_camera
   {}
 };
 
-typedef struct render_job
+struct render_job
 {
   byte segment;
   byte from_segment;
@@ -267,7 +305,7 @@ vec3d shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
 render_job_list* next_render_jobs;
 render_job_list* current_render_jobs;
 
-typedef struct render_job_list
+struct render_job_list
 {
   byte job_count;
   byte frustum_plane_count;
@@ -302,7 +340,7 @@ typedef struct render_job_list
   }
 };
 
-typedef struct shot
+struct shot
 {
   word x, y, z;
   byte dx, dy, dz;
@@ -310,6 +348,7 @@ typedef struct shot
 };
 
 #include "map.h"
+#include "sprites.h"
 
 byte num_shots;
 shot shots[MAX_SHOTS];
@@ -320,6 +359,61 @@ bool allow_steering;
 r_camera camera;
 
 int minFreeRam = 0xffff;
+
+#ifdef SUB_PIXEL_ACCURACY
+
+void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
+    bool steep = abs(y1 - y0) > abs(x1 - x0);
+    
+    if (steep) {
+      int t;
+      t = x0; x0 = y0; y0 = t;
+      t = x1; x1 = y1; y1 = t;
+    }
+
+    if (x0 > x1) {
+      int t;
+      t = x0; x0 = x1; x1 = t;
+      t = y0; y0 = y1; y1 = t;
+    }
+
+    long dx = x1 - x0;
+    long dy = y1 - y0;
+    long dx2 = dx * 2 * FIXED_POINT_SCALE;
+    long dy2 = dy * 2 * FIXED_POINT_SCALE;
+    long error = (dx * (y0 & 0xf) + dy * (8 - (x0 & 0xf))) * 2;
+    int x = x0 >> 4;
+    int y = y0 >> 4;
+
+    if (steep)
+    {
+      for (int count = ((x1 - x0) >> 4) + 1; count; --count)
+      {
+        for (; error > dx2; ++y, error -= dx2);
+        for (; error < 0; --y, error += dx2);
+        //_displayBuffer[y + (x / 8) * LCDWIDTH_NOROT] |= _BV(x % 8);
+        gb.display.drawPixel(y, x);
+        ++x, error += dy2;
+      }
+    }
+    else
+    {
+      for (int count = ((x1 - x0) >> 4) + 1; count; --count)
+      {
+        for (; error > dx2; ++y, error -= dx2);
+        for (; error < 0; --y, error += dx2);
+        //_displayBuffer[x + (y / 8) * LCDWIDTH_NOROT] |= _BV(y % 8);
+        gb.display.drawPixel(x, y);
+        ++x, error += dy2;
+      }
+    }
+}
+
+#else
+
+#define draw_line_fixed_point(x0, y0, x1, y1) gb.display.drawLine(x0, y0, x1, y1)
+
+#endif
 
 void updateMinFreeRam()
 {
@@ -337,9 +431,7 @@ void title_screen()
   camera.at = vec3d(1.5, 0.5, 9.75);
   camera.current_segment = 0;
   num_shots = 0;
-#ifdef WOBBLE_SHIP
   camera.wobble = 0;
-#endif
   allow_steering = false;
 }
 
@@ -347,10 +439,6 @@ void setup()
 {
 #ifdef DEBUG
   updateMinFreeRam();
-#endif
-#ifdef SERIAL_DEBUG
-  Serial.begin(9600);
-  Serial.println("Hello");
 #endif
   gb.begin();
   title_screen();
@@ -466,10 +554,11 @@ byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_dista
   // - if we hit a wall, bump against it
   // - if we hit a portal, pass through it and update the camera's current segment
   byte num_points = pgm_read_byte(&segments[*segment].vertex_and_portal_count) >> 4;
-  byte *vertices = pgm_read_ptr(&segments[*segment].vertices);
-  word *portals = pgm_read_ptr(&segments[*segment].portals);
+  byte *vertices = (byte*)pgm_read_ptr(&segments[*segment].vertices);
+  word *portals = (word*)pgm_read_ptr(&segments[*segment].portals);
   byte num_portals = pgm_read_byte(&segments[*segment].vertex_and_portal_count) & 0xf;
   byte next_portal_index = 0;
+  
   word adjacent_segment;
   for (int i = 0; i < num_points; i++)
   {
@@ -526,7 +615,10 @@ byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_dista
         if (f < 0.0)
         {
           // yup, we've crossed the portal, move camera to adjacent segment
+          //LOG("crossed a portal: from %d to %d\n", *segment, adjacent_segment);
           *segment = adjacent_segment;
+          // If we don't return here, we'll get some portal jumping bugs, yay!
+          return collided;
         }
       }
     }
@@ -578,10 +670,8 @@ void move_player()
   camera.roll_sin = sin(camera.ayaw * 0.7);
   camera.roll_cos = cos(camera.ayaw * 0.7);
 #endif
-#ifdef WOBBLE_SHIP
   camera.wobble += 8;
-  camera.wobble_shift = sin(camera.wobble * PI / 128.0) * 0.05;
-#endif
+  camera.wobble_sin = sin(camera.wobble * PI128);
 
   // move shots
   for (int i = 0; i < num_shots; i++)
@@ -668,8 +758,8 @@ void clip_line_against_plane(polygon* result, const vec3d& clip_plane_normal, po
   result->num_vertices = 0;
   float d0 = source->vertices[0].dot(clip_plane_normal);
   float d1 = source->vertices[1].dot(clip_plane_normal);
-  bool flag0 = (d0 >= 0.0);
-  bool flag1 = (d1 >= 0.0);
+  bool flag0 = (d0 > 0.0);
+  bool flag1 = (d1 > 0.0);
   // TODO: this is kind of quick and dirty, the line will be discarded unless it is completely
   // visible... maybe add a calculation of the intersection here, but it works alright for flares
   if (flag0 && flag1)
@@ -700,8 +790,80 @@ void transform_world_space_to_view_space(vec3d* v)
 #endif
 #ifdef WOBBLE_SHIP
   // add wobble
-  v->y += camera.wobble_shift;
+  v->y += camera.wobble_sin * 0.05;
 #endif
+}
+
+void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_offset)
+{
+  const sprite* s = &sprites[sprite_index];
+  for (int i = 0; i < s->polygon_count; i++)
+  {
+    // construct polygon
+    polygon pl;
+    polygon clipped_polygon;
+
+    vec3d x(0.02, 0.0, 0.0);
+    vec3d y(0.0, 0.02, 0.0);
+    x.rotate(camera.wobble * PI128);
+    const sprite_polygon* sp = &s->polygons[i];
+    for (int k = 0; k < sp->num_vertices; k++)
+      pl.add_vertex(p + x * ((float)(sp->vertices[k] >> 4) - 7) + y * ((float)(sp->vertices[k] & 0xf) - 7), (sp->draw_edges >> k) & 1);
+
+    // transform wall to view space
+    for (int k = 0; k < pl.num_vertices; k++)
+      transform_world_space_to_view_space(&pl.vertices[k]);
+
+    // clip wall polygon against frustum
+    polygon* p_polygon = &pl;
+#ifdef CLIP_TO_FRUSTUM
+    polygon* p_clipped_polygon = &clipped_polygon;
+    polygon* temp;
+    for (int k = 0; k < frustum_count; k++)
+    {
+      clip_polygon_against_plane(p_clipped_polygon, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES], p_polygon);
+      // break from loop if we have a degenerate polygon
+      temp = p_polygon; p_polygon = p_clipped_polygon; p_clipped_polygon = temp;
+      if (p_polygon->num_vertices < 3)
+        break;
+    }
+#endif
+
+    // skip this polygon if too many vertices have been clipped away
+    if (p_polygon->num_vertices < 3)
+      continue;
+
+    #ifdef DEBUG
+        faces_drawn += 1;
+    #endif
+    
+    LINE_COORDINATE_TYPE first_x, first_y, last_x, last_y;
+
+    for (int k = 0; k < p_polygon->num_vertices; k++)
+    {
+#ifdef TOP_VIEW
+      LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_polygon->vertices[k].x) + 42) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_polygon->vertices[k].z) + 34) * FIXED_POINT_SCALE;
+#else
+      LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_polygon->vertices[k].x / -p_polygon->vertices[k].z) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_polygon->vertices[k].y / -p_polygon->vertices[k].z) * FIXED_POINT_SCALE;
+#endif
+      if (k == 0)
+      {
+        first_x = tx;
+        first_y = ty;
+      }
+      else
+      {
+        if ((p_polygon->draw_edges >> (k - 1)) & 1)
+          draw_line_fixed_point(last_x, last_y, tx, ty);
+      }
+      last_x = tx;
+      last_y = ty;
+    }
+    if ((p_polygon->draw_edges >> (p_polygon->num_vertices - 1)) & 1)
+      draw_line_fixed_point(last_x, last_y, first_x, first_y);
+  }
 }
 
 void render_segment(byte segment_index, byte frustum_count, byte frustum_offset, byte from_segment = 255)
@@ -713,14 +875,6 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
 #ifdef DEBUG
   segments_drawn++;
 #endif
-#ifdef SERIAL_DEBUG
-  Serial.print("rendering segment ");
-  Serial.print(segment_index);
-  Serial.print(" with ");
-  Serial.print(frustum_count);
-  Serial.print(" frustum planes");
-  Serial.println();
-#endif
   // iterate through every pair of adjacent vertices:
   // - construct polygon
   // - if it's a portal to the segment we're coming from: skip it
@@ -728,8 +882,8 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
   // - if it's a wall: render outline
   // - if it's a portal: recursively render adjacent segment with updated frustum
   byte num_points = pgm_read_byte(&segments[segment_index].vertex_and_portal_count) >> 4;
-  byte *vertices = pgm_read_ptr(&segments[segment_index].vertices);
-  word *portals = pgm_read_ptr(&segments[segment_index].portals);
+  byte *vertices = (byte*)pgm_read_ptr(&segments[segment_index].vertices);
+  word *portals = (word*)pgm_read_ptr(&segments[segment_index].portals);
   byte num_portals = pgm_read_byte(&segments[segment_index].vertex_and_portal_count) & 0xf;
   byte next_portal_index = 0;
   word next_portal_point = pgm_read_word(&portals[next_portal_index]);
@@ -868,25 +1022,17 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
     #ifdef DEBUG
         faces_drawn += 1;
     #endif
-    #ifdef SERIAL_DEBUG
-      Serial.print("rendering wall ");
-      Serial.print(i);
-      Serial.print(" with ");
-      Serial.print(p_wall->num_vertices);
-      Serial.print(" vertices");
-      Serial.println();
-    #endif
     
-    int first_x, first_y, last_x, last_y;
+    LINE_COORDINATE_TYPE first_x, first_y, last_x, last_y;
 
     for (int k = 0; k < p_wall->num_vertices; k++)
     {
 #ifdef TOP_VIEW
-      int tx = (int)(TOP_VIEW_SCALE * p_wall->vertices[k].x) + 42;
-      int ty = (int)(TOP_VIEW_SCALE * p_wall->vertices[k].z) + 34;
+      LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_wall->vertices[k].x) + 42) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_wall->vertices[k].z) + 34) * FIXED_POINT_SCALE;
 #else
-      int tx = (int)(41.5 + 41.5 * p_wall->vertices[k].x / -p_wall->vertices[k].z);
-      int ty = (int)(23.5 - 41.5 * p_wall->vertices[k].y / -p_wall->vertices[k].z);
+      LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_wall->vertices[k].x / -p_wall->vertices[k].z) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_wall->vertices[k].y / -p_wall->vertices[k].z) * FIXED_POINT_SCALE;
 #endif
       if (k == 0)
       {
@@ -896,14 +1042,22 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
       else
       {
         if ((p_wall->draw_edges >> (k - 1)) & 1)
-          gb.display.drawLine(last_x, last_y, tx, ty);
+          draw_line_fixed_point(last_x, last_y, tx, ty);
       }
       last_x = tx;
       last_y = ty;
     }
     if ((p_wall->draw_edges >> (p_wall->num_vertices - 1)) & 1)
-      gb.display.drawLine(last_x, last_y, first_x, first_y);
+      draw_line_fixed_point(last_x, last_y, first_x, first_y);
   }
+
+/*
+  // render sprites
+  if (segment_index == 0)
+  {
+    render_sprite(0, vec3d(1.0, 0.5, 8.0), frustum_count, frustum_offset);
+  }
+  */
 
   // render shots in this segment
   for (byte i = 0; i < num_shots; i++)
@@ -942,17 +1096,17 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
     if (p_flare_polygon->num_vertices == 2)
     {
 #ifdef TOP_VIEW
-      int tx = (int)(TOP_VIEW_SCALE * p_flare_polygon->vertices[0].x) + 42;
-      int ty = (int)(TOP_VIEW_SCALE * p_flare_polygon->vertices[0].z) + 34;
-      int tx2 = (int)(TOP_VIEW_SCALE * p_flare_polygon->vertices[1].x) + 42;
-      int ty2 = (int)(TOP_VIEW_SCALE * p_flare_polygon->vertices[1].z) + 34;
+      LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].x) + 42) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].z) + 34) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE tx2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].x) + 42) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].z) + 34) * FIXED_POINT_SCALE;
 #else
-      int tx = (int)(41.5 + 41.5 * p_flare_polygon->vertices[0].x / -p_flare_polygon->vertices[0].z);
-      int ty = (int)(23.5 - 41.5 * p_flare_polygon->vertices[0].y / -p_flare_polygon->vertices[0].z);
-      int tx2 = (int)(41.5 + 41.5 * p_flare_polygon->vertices[1].x / -p_flare_polygon->vertices[1].z);
-      int ty2 = (int)(23.5 - 41.5 * p_flare_polygon->vertices[1].y / -p_flare_polygon->vertices[1].z);
+      LINE_COORDINATE_TYPE tx = ((41.5 + 41.5 * p_flare_polygon->vertices[0].x / -p_flare_polygon->vertices[0].z)) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty = ((23.5 - 41.5 * p_flare_polygon->vertices[0].y / -p_flare_polygon->vertices[0].z)) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE tx2 = ((41.5 + 41.5 * p_flare_polygon->vertices[1].x / -p_flare_polygon->vertices[1].z)) * FIXED_POINT_SCALE;
+      LINE_COORDINATE_TYPE ty2 = ((23.5 - 41.5 * p_flare_polygon->vertices[1].y / -p_flare_polygon->vertices[1].z)) * FIXED_POINT_SCALE;
 #endif
-      gb.display.drawLine(tx, ty, tx2, ty2);
+      draw_line_fixed_point(tx, ty, tx2, ty2);
     }
   }
 }
@@ -967,6 +1121,31 @@ void print_vec3d(const vec3d& v)
 
 void update_scene()
 {
+  /*
+  for (int i = 0; i < 12; i++)
+  {
+    //camera.wobble = 0;
+    float dx = cos(i * 2.0 * PI / 12.0 + (camera.wobble / 256.0));
+    float dy = sin(i * 2.0 * PI / 12.0 + (camera.wobble / 256.0));
+    LINE_COORDINATE_TYPE x0 = (41.5 + 5.0 * dx) * FIXED_POINT_SCALE;
+    LINE_COORDINATE_TYPE y0 = (23.5 + 5.0 * dy) * FIXED_POINT_SCALE;
+    LINE_COORDINATE_TYPE x1 = (41.5 + 22.5 * dx) * FIXED_POINT_SCALE;
+    LINE_COORDINATE_TYPE y1 = (23.5 + 22.5 * dy) * FIXED_POINT_SCALE;
+    draw_line_fixed_point(x0, y0, x1, y1);
+  }
+  return;
+  for (int i = 0; i < 3; i++)
+  {
+    //camera.wobble = 0;
+    float dx = cos(camera.wobble * PI / 128.0);
+    LINE_COORDINATE_TYPE x0 = 10.0 * FIXED_POINT_SCALE;
+    LINE_COORDINATE_TYPE y0 = (i * 10.0 + 10.0 + dx * 1.0) * FIXED_POINT_SCALE;
+    LINE_COORDINATE_TYPE x1 = 70.0 * FIXED_POINT_SCALE;
+    LINE_COORDINATE_TYPE y1 = (i * 12.0 + 15.0 + dx * 3.0) * FIXED_POINT_SCALE;
+    draw_line_fixed_point(x0, y1, x1, y0);
+  }
+  return;
+  */
 #ifdef DEBUG
   updateMinFreeRam();
 #endif

@@ -19,7 +19,7 @@ const static word p_8[] PROGMEM = {0x1009,0x400a,0x600b,0x9007};
 const static byte v_9[] PROGMEM = {0x1,0x81,0x80,0x0};
 const static word p_9[] PROGMEM = {0x1008,0x3000};
 const static byte v_10[] PROGMEM = {0x4,0x44,0x40,0x0};
-const static word p_10[] PROGMEM = {0x2008};
+const static word p_10[] PROGMEM = {0x11,0x2008};
 const static byte v_11[] PROGMEM = {0x21,0x20,0x0,0x1};
 const static word p_11[] PROGMEM = {0xc,0x2008};
 const static byte v_12[] PROGMEM = {0x31,0x20,0x1,0x2};
@@ -32,6 +32,8 @@ const static byte v_15[] PROGMEM = {0x10,0x0,0x1,0x11};
 const static word p_15[] PROGMEM = {0x10,0x200e};
 const static byte v_16[] PROGMEM = {0x73,0x70,0x0,0x3,0x33,0x43};
 const static word p_16[] PROGMEM = {0x400f};
+const static byte v_17[] PROGMEM = {0x2,0x3,0x33,0x53,0x83,0x82,0x60,0x20};
+const static word p_17[] PROGMEM = {0x600a};
 const static segment segments[] PROGMEM = {
   {0,16,0,7,0x82,v_0,p_0},
   {4,12,1,3,0x42,v_1,p_1},
@@ -43,13 +45,14 @@ const static segment segments[] PROGMEM = {
   {8,16,15,5,0x42,v_7,p_7},
   {0,16,12,7,0xb4,v_8,p_8},
   {0,16,4,9,0x42,v_9,p_9},
-  {0,16,15,11,0x41,v_10,p_10},
+  {0,16,15,11,0x42,v_10,p_10},
   {0,16,20,10,0x42,v_11,p_11},
   {0,16,22,9,0x42,v_12,p_12},
   {0,16,24,8,0x42,v_13,p_13},
   {0,16,25,6,0x42,v_14,p_14},
   {0,16,26,5,0x42,v_15,p_15},
-  {0,16,23,2,0x61,v_16,p_16}
+  {0,16,23,2,0x61,v_16,p_16},
+  {0,16,13,15,0x81,v_17,p_17}
 };
 const static int SEGMENTS_TOUCHED_SIZE = 3;
 byte segments_touched[SEGMENTS_TOUCHED_SIZE];

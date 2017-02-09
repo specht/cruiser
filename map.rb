@@ -410,28 +410,28 @@ segment(27, 5) do
     v 3, 0
 end
 
-# segment(15, 15) do
-#     v -2, 2
-#     v 0, 1
-#     v 3, 0
-#     v 2, 0
-#     v 3, 0
-#     v 0, -1
-#     v -2, -2
-# end
-# 
+segment(15, 15) do
+    v -2, 2
+    v 0, 1
+    v 3, 0
+    v 2, 0
+    v 3, 0
+    v 0, -1
+    v -2, -2
+end
+
 # segment(13, 18) do
 #     v 0, 2
 #     v 3, 0
 #     v 0, -2
 # end
-
+# 
 # segment(16, 18) do
 #     v 0, 2
 #     v 2, 0
 #     v 0, -2
 # end
-
+# 
 # segment(18, 18) do
 #     v 0, 2
 #     v 3, 0
