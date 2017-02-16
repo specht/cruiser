@@ -86,7 +86,7 @@ Speaking of memory usage, let's add some more monitoring before we start diving 
 Because monitoring the RAM itself uses some flash memory and RAM, there's a preprocessor option to switch RAM monitoring on or off (@MONITOR_RAM@).
 
 #{code('step_04_a_beginning')}
-#{stats(9382, 699, 711)}
+#{stats(9382, 699, 799)}
 
 Now this brings us closer to the true value, but it still isn't entirely accurate: whenever we call a library function in one of our functions, the maximum amount of used RAM will not get updated, so the true maximum will always be higher.
 

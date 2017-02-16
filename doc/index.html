@@ -282,24 +282,40 @@ div.barchart-fg {
 <span class="c1">// #define SHOW_TITLE_SCREEN
 </span><span class="cp">#define MONITOR_RAM
 </span>
+<span class="cp">#ifdef MONITOR_RAM
+</span>    
+    <span class="k">extern</span> <span class="kt">uint8_t</span> <span class="n">_end</span><span class="p">;</span>
+    
+    <span class="kt">void</span> <span class="nf">stack_paint</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">p</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">_end</span><span class="p">;</span>
+    
+        <span class="k">while</span> <span class="p">(</span><span class="n">p</span> <span class="o">&lt;</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">p</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="o">*</span><span class="n">p</span> <span class="o">=</span> <span class="mh">0xc5</span><span class="p">;</span>
+            <span class="n">p</span><span class="o">++</span><span class="p">;</span>
+        <span class="p">}</span>
+    <span class="p">}</span> 
+    
+    <span class="kt">uint16_t</span> <span class="nf">max_ram_usage</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">const</span> <span class="kt">uint8_t</span> <span class="o">*</span><span class="n">p</span> <span class="o">=</span> <span class="o">&amp;</span><span class="n">_end</span><span class="p">;</span>
+        <span class="kt">uint16_t</span> <span class="n">c</span> <span class="o">=</span> <span class="mi">2048</span><span class="p">;</span>
+    
+        <span class="k">while</span> <span class="p">(</span><span class="o">*</span><span class="n">p</span> <span class="o">==</span> <span class="mh">0xc5</span> <span class="o">&amp;&amp;</span> <span class="n">p</span> <span class="o">&lt;</span> <span class="p">(</span><span class="kt">uint8_t</span><span class="o">*</span><span class="p">)</span><span class="o">&amp;</span><span class="n">p</span><span class="p">)</span>
+        <span class="p">{</span>
+            <span class="n">p</span><span class="o">++</span><span class="p">;</span>
+            <span class="n">c</span><span class="o">--</span><span class="p">;</span>
+        <span class="p">}</span>
+    
+        <span class="k">return</span> <span class="n">c</span><span class="p">;</span>
+    <span class="p">}</span> 
+<span class="cp">#endif
+</span>
 <span class="n">Gamebuino</span> <span class="n">gb</span><span class="p">;</span>
 
-<span class="cp">#ifdef MONITOR_RAM
-</span>    <span class="kt">int</span> <span class="n">MIN_FREE_RAM</span> <span class="o">=</span> <span class="mh">0xffff</span><span class="p">;</span>
-    
-    <span class="kt">void</span> <span class="nf">update_min_free_ram</span><span class="p">()</span>
-    <span class="p">{</span>
-        <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">getFreeRam</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">MIN_FREE_RAM</span><span class="p">)</span> <span class="n">MIN_FREE_RAM</span> <span class="o">=</span> <span class="n">gb</span><span class="p">.</span><span class="n">getFreeRam</span><span class="p">();</span>
-    <span class="p">}</span>
-    
-    <span class="cp">#define MONITOR_RAM_UPDATE update_min_free_ram();
-#else
-</span>    <span class="cp">#define MONITOR_RAM_UPDATE
-#endif
-</span>
 <span class="kt">void</span> <span class="nf">title_screen</span><span class="p">()</span>
 <span class="p">{</span>
-    <span class="n">MONITOR_RAM_UPDATE</span>
     <span class="cp">#ifdef SHOW_TITLE_SCREEN
 </span>        <span class="n">gb</span><span class="p">.</span><span class="n">titleScreen</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"CRUISER"</span><span class="p">));</span>
     <span class="cp">#endif
@@ -308,26 +324,28 @@ div.barchart-fg {
 
 <span class="kt">void</span> <span class="nf">setup</span><span class="p">()</span>
 <span class="p">{</span>
-    <span class="n">MONITOR_RAM_UPDATE</span>
-    <span class="n">gb</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
+    <span class="cp">#ifdef MONITOR_RAM
+</span>        <span class="n">stack_paint</span><span class="p">();</span>
+    <span class="cp">#endif
+</span>    <span class="n">gb</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
     <span class="n">title_screen</span><span class="p">();</span>
 <span class="p">}</span>
 
 <span class="kt">void</span> <span class="nf">loop</span><span class="p">()</span>
 <span class="p">{</span>
-    <span class="n">MONITOR_RAM_UPDATE</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">buttons</span><span class="p">.</span><span class="n">pressed</span><span class="p">(</span><span class="n">BTN_C</span><span class="p">))</span>
         <span class="n">title_screen</span><span class="p">();</span>
     <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">update</span><span class="p">())</span>
     <span class="p">{</span>
         <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">println</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"Hello Gamebuino"</span><span class="p">));</span>
         <span class="cp">#ifdef MONITOR_RAM
-</span>            <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">println</span><span class="p">(</span><span class="mi">2048</span> <span class="o">-</span> <span class="n">MIN_FREE_RAM</span><span class="p">);</span>
+</span>            <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">print</span><span class="p">(</span><span class="n">max_ram_usage</span><span class="p">());</span>
+            <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">print</span><span class="p">(</span><span class="s">" bytes"</span><span class="p">);</span>
         <span class="cp">#endif
 </span>        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawPixel</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
         <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawLine</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">83</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
     <span class="p">}</span>
-<span class="p">}</span></pre><table class='barchart'><tr><td style='white-space: pre;'>Flash usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #729fcf; width: 29.08606150793651%;'></div><p></div></td><td style='text-align: right; white-space: pre;'>9382 / 32256 b</td></tr><tr><td style='white-space: pre;'>Min <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #ad7fa8; width: 34.130859375%;'></div></div></td><td style='text-align: right; white-space: pre;'>699 /  2048 b</td></tr><tr><td style='white-space: pre;'>Max <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #f384ae; width: 34.716796875%;'></div></div></td><td style='text-align: right; white-space: pre;'>711 /  2048 b</td></tr></table></p>
+<span class="p">}</span></pre><table class='barchart'><tr><td style='white-space: pre;'>Flash usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #729fcf; width: 29.08606150793651%;'></div><p></div></td><td style='text-align: right; white-space: pre;'>9382 / 32256 b</td></tr><tr><td style='white-space: pre;'>Min <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #ad7fa8; width: 34.130859375%;'></div></div></td><td style='text-align: right; white-space: pre;'>699 /  2048 b</td></tr><tr><td style='white-space: pre;'>Max <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #f384ae; width: 39.013671875%;'></div></div></td><td style='text-align: right; white-space: pre;'>799 /  2048 b</td></tr></table></p>
 <p>Now this brings us closer to the true value, but it still isn&#8217;t entirely accurate: whenever we call a library function in one of our functions, the maximum amount of used <span class="caps">RAM</span> will not get updated, so the true maximum will always be higher.</p>
 <h2>Let&#8217;s draw something!</h2>
 <p>The peculiar thing about 3D graphics is that we have to get a couple of non-trivial things right before we can draw anything to the screen. We have to think about how we want to define the world we&#8217;re moving around in and how to convert the current state of the game to a rasterized, graphical representation.</p>
