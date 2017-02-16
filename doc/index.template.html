@@ -1,0 +1,156 @@
+<html>
+<head>
+
+<title>Writing a 3D portal engine for the Gamebuino</title>
+
+<style type='text/css'>
+body {
+    background-color: #f0f0f0;
+    font-family: monospace;
+    font-size: 14px;
+    margin: 0;
+    counter-reset: section;
+}
+
+#main {
+    margin: 0;
+    max-width: 50em;
+    min-height: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    background-color: #fff;
+    box-shadow: 0 0 20px #bbb;
+    padding: 1em 2em;
+}
+
+.highlight {
+    padding: 1em;
+    border-radius: 1em;
+/*     box-shadow: 0 0 20px rgba(0,0,0,0.25); */
+    border: 1px solid #cacccc;
+    background-color: #f3f5f3!important;
+}
+
+img.full {
+    max-width: 100%;
+    border-radius: 1em;
+    display: block;
+}
+
+img.gb {
+    border-radius: 0.5em;
+    display: inline-block;
+    background: linear-gradient(#f3f5f3, #fafafa);
+    padding: 0.5em;
+    max-width: 44%;
+    border: 1px solid #cacccc;
+/*     box-shadow: 0 0 20px rgba(0,0,0,0.25); */
+}
+
+a, a:visited {
+    color: #3465a4;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+pre.highlight {
+    white-space: pre-wrap;
+/*     word-wrap: break-word; */
+}
+
+div.note {
+    border-top: 1px solid #cacccc;
+    border-bottom: 1px solid #cacccc;
+    background-color: #f3f5f3;
+    padding: 0em 1em;
+    font-size: 90%;
+}
+
+div.center {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+}
+
+blockquote {
+    font-style: italic;
+}
+
+hr {
+    border: none;
+    text-align: center;
+}
+
+hr:before {
+    content: "~";
+}
+
+h2 {
+    counter-reset: subsection;
+}
+
+h2::before {
+  counter-increment: section;
+  content: counter(section) ". ";
+}
+
+h3::before {
+  counter-increment: subsection;
+  content: counter(section) "." counter(subsection) " ";
+}
+
+code {
+    color: #d5291a;
+}
+
+table.barchart {
+    width: 100%;
+    padding: 1em;
+    border-radius: 1em;
+/*     box-shadow: 0 0 20px rgba(0,0,0,0.25); */
+    border: 1px solid #cacccc;
+    background-color: #f3f5f3!important;
+}
+
+div.barchart-bg {
+    position: relative;
+    background-color: #e1e1e0;
+    height: 3px;
+    min-width: 100%;
+}
+
+div.barchart-fg {
+    position: absolute;
+    height: 3px;
+}
+
+@media all and (max-width: 50em) {
+    body {
+        font-size: 12px;
+    }
+    
+    #main {
+        max-width: unset;
+    }
+}
+
+@media print {
+    body {
+        background-color: #fff;
+        font-size: 12px;
+    }
+}
+
+{CSS_HERE}
+</style>
+</head>
+
+<body>
+<div id='main'>
+{CONTENT_HERE}
+</div>
+</body>
+</html>

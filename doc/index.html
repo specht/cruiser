@@ -1,0 +1,432 @@
+<html>
+<head>
+
+<title>Writing a 3D portal engine for the Gamebuino</title>
+
+<style type='text/css'>
+body {
+    background-color: #f0f0f0;
+    font-family: monospace;
+    font-size: 14px;
+    margin: 0;
+    counter-reset: section;
+}
+
+#main {
+    margin: 0;
+    max-width: 50em;
+    min-height: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    background-color: #fff;
+    box-shadow: 0 0 20px #bbb;
+    padding: 1em 2em;
+}
+
+.highlight {
+    padding: 1em;
+    border-radius: 1em;
+/*     box-shadow: 0 0 20px rgba(0,0,0,0.25); */
+    border: 1px solid #cacccc;
+    background-color: #f3f5f3!important;
+}
+
+img.full {
+    max-width: 100%;
+    border-radius: 1em;
+    display: block;
+}
+
+img.gb {
+    border-radius: 0.5em;
+    display: inline-block;
+    background: linear-gradient(#f3f5f3, #fafafa);
+    padding: 0.5em;
+    max-width: 44%;
+    border: 1px solid #cacccc;
+/*     box-shadow: 0 0 20px rgba(0,0,0,0.25); */
+}
+
+a, a:visited {
+    color: #3465a4;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+pre.highlight {
+    white-space: pre-wrap;
+/*     word-wrap: break-word; */
+}
+
+div.note {
+    border-top: 1px solid #cacccc;
+    border-bottom: 1px solid #cacccc;
+    background-color: #f3f5f3;
+    padding: 0em 1em;
+    font-size: 90%;
+}
+
+div.center {
+    margin-left: auto;
+    margin-right: auto;
+    text-align: center;
+}
+
+blockquote {
+    font-style: italic;
+}
+
+hr {
+    border: none;
+    text-align: center;
+}
+
+hr:before {
+    content: "~";
+}
+
+h2 {
+    counter-reset: subsection;
+}
+
+h2::before {
+  counter-increment: section;
+  content: counter(section) ". ";
+}
+
+h3::before {
+  counter-increment: subsection;
+  content: counter(section) "." counter(subsection) " ";
+}
+
+code {
+    color: #d5291a;
+}
+
+table.barchart {
+    width: 100%;
+    padding: 1em;
+    border-radius: 1em;
+/*     box-shadow: 0 0 20px rgba(0,0,0,0.25); */
+    border: 1px solid #cacccc;
+    background-color: #f3f5f3!important;
+}
+
+div.barchart-bg {
+    position: relative;
+    background-color: #e1e1e0;
+    height: 3px;
+    min-width: 100%;
+}
+
+div.barchart-fg {
+    position: absolute;
+    height: 3px;
+}
+
+@media all and (max-width: 50em) {
+    body {
+        font-size: 12px;
+    }
+    
+    #main {
+        max-width: unset;
+    }
+}
+
+@media print {
+    body {
+        background-color: #fff;
+        font-size: 12px;
+    }
+}
+
+.highlight table td { padding: 5px; } .highlight table pre { margin: 0; } .highlight .cm { color: #999988; font-style: italic; } .highlight .cp { color: #999999; font-weight: bold; } .highlight .c1 { color: #999988; font-style: italic; } .highlight .cs { color: #999999; font-weight: bold; font-style: italic; } .highlight .c, .highlight .cd { color: #999988; font-style: italic; } .highlight .err { color: #a61717; background-color: #e3d2d2; } .highlight .gd { color: #000000; background-color: #ffdddd; } .highlight .ge { color: #000000; font-style: italic; } .highlight .gr { color: #aa0000; } .highlight .gh { color: #999999; } .highlight .gi { color: #000000; background-color: #ddffdd; } .highlight .go { color: #888888; } .highlight .gp { color: #555555; } .highlight .gs { font-weight: bold; } .highlight .gu { color: #aaaaaa; } .highlight .gt { color: #aa0000; } .highlight .kc { color: #000000; font-weight: bold; } .highlight .kd { color: #000000; font-weight: bold; } .highlight .kn { color: #000000; font-weight: bold; } .highlight .kp { color: #000000; font-weight: bold; } .highlight .kr { color: #000000; font-weight: bold; } .highlight .kt { color: #445588; font-weight: bold; } .highlight .k, .highlight .kv { color: #000000; font-weight: bold; } .highlight .mf { color: #009999; } .highlight .mh { color: #009999; } .highlight .il { color: #009999; } .highlight .mi { color: #009999; } .highlight .mo { color: #009999; } .highlight .m, .highlight .mb, .highlight .mx { color: #009999; } .highlight .sb { color: #d14; } .highlight .sc { color: #d14; } .highlight .sd { color: #d14; } .highlight .s2 { color: #d14; } .highlight .se { color: #d14; } .highlight .sh { color: #d14; } .highlight .si { color: #d14; } .highlight .sx { color: #d14; } .highlight .sr { color: #009926; } .highlight .s1 { color: #d14; } .highlight .ss { color: #990073; } .highlight .s { color: #d14; } .highlight .na { color: #008080; } .highlight .bp { color: #999999; } .highlight .nb { color: #0086B3; } .highlight .nc { color: #445588; font-weight: bold; } .highlight .no { color: #008080; } .highlight .nd { color: #3c5d5d; font-weight: bold; } .highlight .ni { color: #800080; } .highlight .ne { color: #990000; font-weight: bold; } .highlight .nf { color: #990000; font-weight: bold; } .highlight .nl { color: #990000; font-weight: bold; } .highlight .nn { color: #555555; } .highlight .nt { color: #000080; } .highlight .vc { color: #008080; } .highlight .vg { color: #008080; } .highlight .vi { color: #008080; } .highlight .nv { color: #008080; } .highlight .ow { color: #000000; font-weight: bold; } .highlight .o { color: #000000; font-weight: bold; } .highlight .w { color: #bbbbbb; } .highlight { background-color: #f8f8f8; }
+</style>
+</head>
+
+<body>
+<div id='main'>
+<h1>Writing a 3D portal engine for the Gamebuino</h1>
+<p><em>A low-resolution, bumpy ride through the innards of the Gamebuino and an eulogy to state of the art<sup style='font-size: 80%;'>1</sup> computer graphics by N. Harold Cham.</em></p>
+<div style='text-align: right; font-size: 80%;'>
+<p><sup>1</sup> as of 20+ years ago</p>
+</div>
+<hr />
+<p>This is a small writeup about my efforts to bring a 6 degrees-of-freedom 3D shooter to the <a href="http://gamebuino.com">Gamebuino</a>. Think, <em>cough</em>, Descent&trade;. Here&#8217;s a screenshot that might bring back some memories:</p>
+<p><img src='images/descent.png' class='full' /></p>
+<p>Yeah! Endless, nested corridors! Huge pixels on the walls! Lasers! <em>Concsn missiles!</em> I was sold on the game pretty instantly. The thing that set the game apart from Wolfenstein 3D and Doom for me (as Quake wasn&#8217;t on the horizon just yet) was the true 3D environment and player movement.</p>
+<p>Coming across the Gamebuino, I thought: &#8220;Wouldn&#8217;t it be nice to bring this kind of 3D immersion to this neat little retro device?&#8221;</p>
+<p>If you think, no, actually it wouldn&#8217;t, this may actually be a good time to stop reading.</p>
+<p>Now, if you&#8217;re wondering what good it might be to read this when you don&#8217;t even have a Gamebuino here&#8217;s my recommendation for you: Get one at the <a href="http://gamebuino.com/shop/">Gamebuino shop</a>, or dust off your soldering iron and make your own <a href="http://www.makerbuino.com/">MAKERbuino</a>. Or try one of the available <a href="http://gamebuino.com/wiki/index.php?title=Emulators">emulators</a>, I&#8217;ve found gbsim to work pretty well on Linux.</p>
+<p>Here we have a small, Arduino-based gaming console, powered by a small <span class="caps">CPU</span> chugging along dutifully at 16 MHz. Its memory is tiny compared to today&#8217;s standards: we have 32 kb of flash for storing program code, 2 kb of <span class="caps">RAM</span>, and 1 kb of <span class="caps">EEPROM</span> to store persistent information which survives power cycles. A black-and-white screen with 84&#215;48 pixels. What could possibly go wrong?</p>
+<h2>A beginning</h2>
+<p>Let&#8217;s start with a minimal program to see what programming the Gamebuino is like. Fire up the Arduino <span class="caps">IDE</span>, install the Gamebuino library and let&#8217;s try this:</p>
+<pre class='highlight'>
+<span class="cp">#include &lt;Gamebuino.h&gt;
+</span>
+<span class="n">Gamebuino</span> <span class="n">gb</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">setup</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">titleScreen</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"CRUISER"</span><span class="p">));</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">battery</span><span class="p">.</span><span class="n">show</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">loop</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">update</span><span class="p">())</span>
+    <span class="p">{</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">println</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"Hello Gamebuino"</span><span class="p">));</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawPixel</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawLine</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">83</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre><table class='barchart'><tr><td style='white-space: pre;'>Flash usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #729fcf; width: 31.36780753968254%;'></div><p></div></td><td style='text-align: right; white-space: pre;'>10118 / 32256 b</td></tr><tr><td style='white-space: pre;'>Min <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #ad7fa8; width: 33.837890625%;'></div></div></td><td style='text-align: right; white-space: pre;'>693 /  2048 b</td></tr></table></p>
+<div class='note'>
+<p>Below the code, you see the amount of flash memory and <span class="caps">RAM</span> occupied by the program. With a <span class="caps">RAM</span> that small, it&#8217;s important to keep an eye on these numbers, because the remaining <span class="caps">RAM</span> is used all over the place: everytime you call a function, a new stack frame gets created and the return address is stored in <span class="caps">RAM</span>, along with all local variables defined in the function.</p>
+<p>Recursive function calls are even worse with a small <span class="caps">RAM</span>, because the stack frames keep accumulating, quickly leading to a stack overflow and therefore, a halt of the system.</p>
+<p>I&#8217;m adding these little bar charts to keep track of how much space we still have left as we add features, before we run out of memory. It&#8217;s a good way to visualize the upper limit.</p>
+<p><em>Pro tip:</em> You may wonder why we only have 32256 bytes of flash memory available when 32 kb were advertised. According to the stories and the lore which is passed along throughout the centuries, 512 bytes are already taken up by the bootloader, which leaves us with 32256 bytes.</p>
+</div>
+<p>As in every regular Arduino program, we have the <code>setup()</code> and <code>loop()</code> functions. We initialize the Gamebuino library via <code>gb.begin()</code>, display a title screen and tell the library not to show the battery status on the screen.</p>
+<p>In the <code>loop()</code> function, we check whether it&#8217;s time to update the screen and if so, we print some text, draw a pixel, and finally draw a line.</p>
+<div class='note'>
+<p><em>Note:</em> The <code>F()</code> function is a mechanism to move constant string data from <span class="caps">RAM</span> to flash memory, of which we have, err&#8230; &#8220;plenty&#8221;, at least compared to 2 kb of <span class="caps">RAM</span>.</p>
+<p>Using <code>F()</code> around strings, the compiler tells us we&#8217;re using 693 bytes of <span class="caps">RAM</span>. Without it, we&#8217;re at 717 bytes of <span class="caps">RAM</span>, the difference being exactly 24 bytes, which amounts to the total character data in our program plus a trailing &#92;0 for each of both strings. If you only have 2048 bytes of <span class="caps">RAM</span>, you&#8217;ll want to save it wherever you can.</p>
+</div>
+<p>Running the program gives the following:</p>
+<div class='center'>
+<p><img src='images/tr/step_01_a_beginning-1.png' class='gb' /> <img src='images/tr/step_01_a_beginning-2.png' class='gb' /></p>
+</div>
+<p>We see the title screen known from other Gamebuino games and pressing A starts the program.</p>
+<p>Just take a moment to sit back and enjoy the beauty of the vista laid out in front of us. Here we are, with a working minimal example, we can make the Gamebuino do whatever we want (well, almost), and we can draw individual pixels.</p>
+<blockquote>
+<p>&#8220;Give me a drawPixel() and I&#8217;ll paint the world!&#8221;</p>
+</blockquote>
+<div style='text-align: right; padding-right: 10em;'>&#8212; said no one ever</div>
+<p>Splendid! However, once we started the game, there&#8217;s no going back to the title screen. So let&#8217;s fix that by handling a press of the C button:</p>
+<pre class='highlight'>
+<span class="cp">#include &lt;Gamebuino.h&gt;
+</span>
+<span class="n">Gamebuino</span> <span class="n">gb</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">title_screen</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">titleScreen</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"CRUISER"</span><span class="p">));</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">battery</span><span class="p">.</span><span class="n">show</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">setup</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
+    <span class="n">title_screen</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">loop</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">buttons</span><span class="p">.</span><span class="n">pressed</span><span class="p">(</span><span class="n">BTN_C</span><span class="p">))</span>
+        <span class="n">title_screen</span><span class="p">();</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">update</span><span class="p">())</span>
+    <span class="p">{</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">println</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"Hello Gamebuino"</span><span class="p">));</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawPixel</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawLine</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">83</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre><table class='barchart'><tr><td style='white-space: pre;'>Flash usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #729fcf; width: 31.57862103174603%;'></div><p></div></td><td style='text-align: right; white-space: pre;'>10186 / 32256 b</td></tr><tr><td style='white-space: pre;'>Min <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #ad7fa8; width: 33.837890625%;'></div></div></td><td style='text-align: right; white-space: pre;'>693 /  2048 b</td></tr></table></p>
+<p>Now when the C button is pressed, it&#8217;s back to the title screen. Because we need to call the <code>gb.titleScreen()</code> function from two different places now, I moved the call into a separate function <code>title_screen()</code> which also tells the library not to show the battery because <code>gb.titleScreen()</code> disables it while it&#8217;s running and then enables the battery symbol again regardless of whether it was on or off before.</p>
+<hr />
+<p>During development, it might be handy not always having to go through the title screen, so let&#8217;s make it optional during development by introducing a preprocessor flag:</p>
+<pre class='highlight'>
+<span class="cp">#include &lt;Gamebuino.h&gt;
+</span>
+<span class="c1">// #define SHOW_TITLE_SCREEN
+</span>
+<span class="n">Gamebuino</span> <span class="n">gb</span><span class="p">;</span>
+
+<span class="kt">void</span> <span class="nf">title_screen</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="cp">#ifdef SHOW_TITLE_SCREEN
+</span>        <span class="n">gb</span><span class="p">.</span><span class="n">titleScreen</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"CRUISER"</span><span class="p">));</span>
+    <span class="cp">#endif
+</span>    <span class="n">gb</span><span class="p">.</span><span class="n">battery</span><span class="p">.</span><span class="n">show</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">setup</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
+    <span class="n">title_screen</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">loop</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">buttons</span><span class="p">.</span><span class="n">pressed</span><span class="p">(</span><span class="n">BTN_C</span><span class="p">))</span>
+        <span class="n">title_screen</span><span class="p">();</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">update</span><span class="p">())</span>
+    <span class="p">{</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">println</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"Hello Gamebuino"</span><span class="p">));</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawPixel</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawLine</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">83</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre><table class='barchart'><tr><td style='white-space: pre;'>Flash usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #729fcf; width: 28.391617063492063%;'></div><p></div></td><td style='text-align: right; white-space: pre;'>9158 / 32256 b</td></tr><tr><td style='white-space: pre;'>Min <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #ad7fa8; width: 33.837890625%;'></div></div></td><td style='text-align: right; white-space: pre;'>693 /  2048 b</td></tr></table></p>
+<p>Now, unless we have <code>SHOW_TITLE_SCREEN</code> defined, we&#8217;ll be taken right to the game, no need the press <del>play on tape</del> the A button first. Likewise, pressing C doesn&#8217;t bring us to the title screen, but resets the game instantly. Also note that just leaving away the title screen saves us a whole kb of precious flash memory. This is because the compiler doesn&#8217;t include dead code, that is, code that&#8217;s written but never used anywhere, in the executable. Tempting as it may be to buy a kb of flash memory this way, it&#8217;s not really feasible because it breaks the player&#8217;s expectations which include a straightforward way to return to the game loader from the title screen by pressing the C button (instead of holding down C and rebooting the device to flash the loader).</p>
+<h3>Monitoring <span class="caps">RAM</span> usage</h3>
+<p>Speaking of memory usage, let&#8217;s add some more monitoring before we start diving into programming. The <span class="caps">RAM</span> usage reported by the compiler is the minimum amount of used <span class="caps">RAM</span>, but we have no idea about the actual, maximum amount of <span class="caps">RAM</span> used. In order to obtain this information, we define a macro called <code>MONITOR_RAM_UPDATE</code> which we call at the beginning of every function. It checks the available <span class="caps">RAM</span> and updates a global variable if the current <span class="caps">RAM</span> usage is higher than ever before. We have to output the value in the program itself, via the display, to get the value, and it&#8217;s reflected in the third bar chart under &#8220;Max <span class="caps">RAM</span> usage&#8221; (see below).</p>
+<p>Because monitoring the <span class="caps">RAM</span> itself uses some flash memory and <span class="caps">RAM</span>, there&#8217;s a preprocessor option to switch <span class="caps">RAM</span> monitoring on or off (<code>MONITOR_RAM</code>).</p>
+<pre class='highlight'>
+<span class="cp">#include &lt;Gamebuino.h&gt;
+</span>
+<span class="c1">// #define SHOW_TITLE_SCREEN
+</span><span class="cp">#define MONITOR_RAM
+</span>
+<span class="n">Gamebuino</span> <span class="n">gb</span><span class="p">;</span>
+
+<span class="cp">#ifdef MONITOR_RAM
+</span>    <span class="kt">int</span> <span class="n">MIN_FREE_RAM</span> <span class="o">=</span> <span class="mh">0xffff</span><span class="p">;</span>
+    
+    <span class="kt">void</span> <span class="nf">update_min_free_ram</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">getFreeRam</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">MIN_FREE_RAM</span><span class="p">)</span> <span class="n">MIN_FREE_RAM</span> <span class="o">=</span> <span class="n">gb</span><span class="p">.</span><span class="n">getFreeRam</span><span class="p">();</span>
+    <span class="p">}</span>
+    
+    <span class="cp">#define MONITOR_RAM_UPDATE update_min_free_ram();
+#else
+</span>    <span class="cp">#define MONITOR_RAM_UPDATE
+#endif
+</span>
+<span class="kt">void</span> <span class="nf">title_screen</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">MONITOR_RAM_UPDATE</span>
+    <span class="cp">#ifdef SHOW_TITLE_SCREEN
+</span>        <span class="n">gb</span><span class="p">.</span><span class="n">titleScreen</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"CRUISER"</span><span class="p">));</span>
+    <span class="cp">#endif
+</span>    <span class="n">gb</span><span class="p">.</span><span class="n">battery</span><span class="p">.</span><span class="n">show</span> <span class="o">=</span> <span class="nb">false</span><span class="p">;</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">setup</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">MONITOR_RAM_UPDATE</span>
+    <span class="n">gb</span><span class="p">.</span><span class="n">begin</span><span class="p">();</span>
+    <span class="n">title_screen</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="kt">void</span> <span class="nf">loop</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="n">MONITOR_RAM_UPDATE</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">buttons</span><span class="p">.</span><span class="n">pressed</span><span class="p">(</span><span class="n">BTN_C</span><span class="p">))</span>
+        <span class="n">title_screen</span><span class="p">();</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">gb</span><span class="p">.</span><span class="n">update</span><span class="p">())</span>
+    <span class="p">{</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">println</span><span class="p">(</span><span class="n">F</span><span class="p">(</span><span class="s">"Hello Gamebuino"</span><span class="p">));</span>
+        <span class="cp">#ifdef MONITOR_RAM
+</span>            <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">println</span><span class="p">(</span><span class="mi">2048</span> <span class="o">-</span> <span class="n">MIN_FREE_RAM</span><span class="p">);</span>
+        <span class="cp">#endif
+</span>        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawPixel</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+        <span class="n">gb</span><span class="p">.</span><span class="n">display</span><span class="p">.</span><span class="n">drawLine</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span> <span class="mi">83</span><span class="p">,</span> <span class="mi">24</span><span class="p">);</span>
+    <span class="p">}</span>
+<span class="p">}</span></pre><table class='barchart'><tr><td style='white-space: pre;'>Flash usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #729fcf; width: 29.08606150793651%;'></div><p></div></td><td style='text-align: right; white-space: pre;'>9382 / 32256 b</td></tr><tr><td style='white-space: pre;'>Min <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #ad7fa8; width: 34.130859375%;'></div></div></td><td style='text-align: right; white-space: pre;'>699 /  2048 b</td></tr><tr><td style='white-space: pre;'>Max <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #f384ae; width: 34.716796875%;'></div></div></td><td style='text-align: right; white-space: pre;'>711 /  2048 b</td></tr></table></p>
+<p>Now this brings us closer to the true value, but it still isn&#8217;t entirely accurate: whenever we call a library function in one of our functions, the maximum amount of used <span class="caps">RAM</span> will not get updated, so the true maximum will always be higher.</p>
+<h2>Let&#8217;s draw something!</h2>
+<p>The peculiar thing about 3D graphics is that we have to get a couple of non-trivial things right before we can draw anything to the screen. We have to think about how we want to define the world we&#8217;re moving around in and how to convert the current state of the game to a rasterized, graphical representation.</p>
+<p>Let&#8217;s start by defining a struct to represent 3D vectors:</p>
+<pre class='highlight'>
+<span class="k">struct</span> <span class="n">vec3d</span>
+<span class="p">{</span>
+    <span class="kt">float</span> <span class="n">x</span><span class="p">,</span> <span class="n">y</span><span class="p">,</span> <span class="n">z</span><span class="p">;</span>
+
+    <span class="n">vec3d</span><span class="p">()</span>
+        <span class="o">:</span> <span class="n">x</span><span class="p">(</span><span class="mf">0.0</span><span class="p">),</span> <span class="n">y</span><span class="p">(</span><span class="mf">0.0</span><span class="p">),</span> <span class="n">z</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+    <span class="p">{}</span>
+
+    <span class="n">vec3d</span><span class="p">(</span><span class="kt">float</span> <span class="n">_x</span><span class="p">,</span> <span class="kt">float</span> <span class="n">_y</span><span class="p">,</span> <span class="kt">float</span> <span class="n">_z</span><span class="p">)</span>
+        <span class="o">:</span> <span class="n">x</span><span class="p">(</span><span class="n">_x</span><span class="p">),</span> <span class="n">y</span><span class="p">(</span><span class="n">_y</span><span class="p">),</span> <span class="n">z</span><span class="p">(</span><span class="n">_z</span><span class="p">)</span>
+    <span class="p">{}</span>
+
+    <span class="c1">// vector addition
+</span>    <span class="n">vec3d</span> <span class="k">operator</span> <span class="o">+</span><span class="p">(</span><span class="k">const</span> <span class="n">vec3d</span><span class="o">&amp;</span> <span class="n">other</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="n">vec3d</span><span class="p">(</span><span class="n">x</span> <span class="o">+</span> <span class="n">other</span><span class="p">.</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">+</span> <span class="n">other</span><span class="p">.</span><span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">+</span> <span class="n">other</span><span class="p">.</span><span class="n">z</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="kt">void</span> <span class="k">operator</span> <span class="o">+=</span><span class="p">(</span><span class="k">const</span> <span class="n">vec3d</span><span class="o">&amp;</span> <span class="n">other</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">x</span> <span class="o">+=</span> <span class="n">other</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+        <span class="n">y</span> <span class="o">+=</span> <span class="n">other</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+        <span class="n">z</span> <span class="o">+=</span> <span class="n">other</span><span class="p">.</span><span class="n">z</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">// vector subtraction
+</span>    <span class="n">vec3d</span> <span class="k">operator</span> <span class="o">-</span><span class="p">(</span><span class="k">const</span> <span class="n">vec3d</span><span class="o">&amp;</span> <span class="n">other</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="n">vec3d</span><span class="p">(</span><span class="n">x</span> <span class="o">-</span> <span class="n">other</span><span class="p">.</span><span class="n">x</span><span class="p">,</span> <span class="n">y</span> <span class="o">-</span> <span class="n">other</span><span class="p">.</span><span class="n">y</span><span class="p">,</span> <span class="n">z</span> <span class="o">-</span> <span class="n">other</span><span class="p">.</span><span class="n">z</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="kt">void</span> <span class="k">operator</span> <span class="o">-=</span><span class="p">(</span><span class="k">const</span> <span class="n">vec3d</span><span class="o">&amp;</span> <span class="n">other</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">x</span> <span class="o">-=</span> <span class="n">other</span><span class="p">.</span><span class="n">x</span><span class="p">;</span>
+        <span class="n">y</span> <span class="o">-=</span> <span class="n">other</span><span class="p">.</span><span class="n">y</span><span class="p">;</span>
+        <span class="n">z</span> <span class="o">-=</span> <span class="n">other</span><span class="p">.</span><span class="n">z</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">// vector multiplication with scalar value
+</span>    <span class="n">vec3d</span> <span class="k">operator</span> <span class="o">*</span><span class="p">(</span><span class="kt">float</span> <span class="n">d</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="n">vec3d</span><span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">d</span><span class="p">,</span> <span class="n">y</span> <span class="o">*</span> <span class="n">d</span><span class="p">,</span> <span class="n">z</span> <span class="o">*</span> <span class="n">d</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="kt">void</span> <span class="k">operator</span> <span class="o">*=</span><span class="p">(</span><span class="kt">float</span> <span class="n">d</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">x</span> <span class="o">*=</span> <span class="n">d</span><span class="p">;</span>
+        <span class="n">y</span> <span class="o">*=</span> <span class="n">d</span><span class="p">;</span>
+        <span class="n">z</span> <span class="o">*=</span> <span class="n">d</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">// dot product
+</span>    <span class="kt">float</span> <span class="n">dot</span><span class="p">(</span><span class="k">const</span> <span class="n">vec3d</span><span class="o">&amp;</span> <span class="n">other</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">x</span> <span class="o">+</span> <span class="n">y</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">y</span> <span class="o">+</span> <span class="n">z</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">z</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="c1">// cross product
+</span>    <span class="n">vec3d</span> <span class="n">cross</span><span class="p">(</span><span class="k">const</span> <span class="n">vec3d</span><span class="o">&amp;</span> <span class="n">other</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="n">vec3d</span><span class="p">((</span><span class="n">y</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">z</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="n">z</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">y</span><span class="p">),</span>
+                     <span class="p">(</span><span class="n">z</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">z</span><span class="p">),</span>
+                     <span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">y</span><span class="p">)</span> <span class="o">-</span> <span class="p">(</span><span class="n">y</span> <span class="o">*</span> <span class="n">other</span><span class="p">.</span><span class="n">x</span><span class="p">));</span>
+    <span class="p">}</span>
+
+    <span class="kt">float</span> <span class="n">length</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="n">sqrt</span><span class="p">(</span><span class="n">x</span> <span class="o">*</span> <span class="n">x</span> <span class="o">+</span> <span class="n">y</span> <span class="o">*</span> <span class="n">y</span> <span class="o">+</span> <span class="n">z</span> <span class="o">*</span> <span class="n">z</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="kt">void</span> <span class="n">normalize</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="kt">float</span> <span class="n">len1</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">length</span><span class="p">();</span>
+        <span class="n">x</span> <span class="o">*=</span> <span class="n">len1</span><span class="p">;</span>
+        <span class="n">y</span> <span class="o">*=</span> <span class="n">len1</span><span class="p">;</span>
+        <span class="n">z</span> <span class="o">*=</span> <span class="n">len1</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">};</span></pre><p>Next, we have to define a 3D coordinate system. For this game, let&#8217;s stick to the right-handed coordinate system: X points to the right, Y points up, and Z points away from the screen, into the direction of the viewer. It&#8217;s called right-handed because you can use your right hand to determine which direction is which: your thumb is the X axis, pointing right, your index finger is the Y axis, pointing up, and your middle finger is Z (in a left-handed coordinate system, Z would thus point into the screen, away from the viewer).</p>
+<p>Try it for yourself, it&#8217;s a simple way to come to terms with three dimensions. It really doesn&#8217;t matter which system we choose, but it&#8217;s important that we stick to one system throughout the project. Oh, just to think of the confusion that lies ahead. Next time you see somebody tangling their fingers in front of their screen, you&#8217;ll know what&#8217;s up. Go on, give them a conspiratorial wink to show them just how much <em>you&#8217;re in the know</em>.</p>
+<h3>Defining geometry</h3>
+<h2>Projection</h2>
+<p>So now that we have our coordinate system set up (in our mind), we have to define some sort of camera through which the player sees the world. We definitively need a camera position plus some kind of camera orientation which tells us in which direction the camera is pointing. A common way to define a camera in 3D graphics is by defining three vectors called <code>from</code>, <code>at</code>, and <code>up</code>, with <code>from</code> representing the camera position, <code>at</code> representing a point the camera is looking at and <code>up</code> defining a point above the camera.</p>
+<p>Now that we&#8217;ve got the camera position and orientation covered, what&#8217;s still missing in the camera definition is the rectangular image region that represents the screen. We can define it via the horizontal and vertical field of view or, in a more practical manner, via the vertical field of view and the image aspect ratio.</p>
+<p>The pyramid defined by <code>from</code> and the rectangular image region defined by the remaining parameters is called the <em>viewing frustum</em>. It&#8217;s the window into our virtual world, and everything outside this region is invisible.</p>
+<table class='barchart'><tr><td style='white-space: pre;'>Flash usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #729fcf; width: 89.91195436507937%;'></div><p></div></td><td style='text-align: right; white-space: pre;'>29002 / 32256 b</td></tr><tr><td style='white-space: pre;'>Min <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #ad7fa8; width: 62.353515625%;'></div></div></td><td style='text-align: right; white-space: pre;'>1277 /  2048 b</td></tr><tr><td style='white-space: pre;'>Max <span class="caps">RAM</span> usage</td><td style='width: 100%; padding: 0 1em;'><div class='barchart-bg'><div class='barchart-fg' style='background-color: #f384ae; width: 83.7890625%;'></div></div></td><td style='text-align: right; white-space: pre;'>1716 /  2048 b</td></tr></table></p>
+<h2>Clipping</h2>
+<h2>Player movement</h2>
+<h2>Hidden surface removal</h2>
+<h2>Building levels</h2>
+<h2>Lasers!</h2>
+<h2>Sub-pixel accuracy</h2>
+<h2>Debugging</h2>
+<h2>Doors</h2>
+<h2>Objects</h2>
+</div>
+</body>
+</html>

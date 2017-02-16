@@ -6,6 +6,9 @@ const float PI2 = PI * 2.0;
 const float PI180 = PI / 180.0;
 const float PI128 = PI / 128.0;
 const float sqrt22 = pow(2.0, 0.5) * 0.5;
+
+#define MONITOR_RAM
+
 #define MAX_POLYGON_VERTICES 8
 #define MAX_JOB_COUNT 3
 #define MAX_SHARED_FRUSTUM_PLANES 22
@@ -14,21 +17,22 @@ const float sqrt22 = pow(2.0, 0.5) * 0.5;
 //#define DEBUG
 #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
+#define SHOW_TITLE_SCREEN
 
 #define SUB_PIXEL_ACCURACY
 
 #ifdef SUB_PIXEL_ACCURACY
-#define FIXED_POINT_SCALE 16
+    #define FIXED_POINT_SCALE 16
 #else
-#define FIXED_POINT_SCALE 1
+    #define FIXED_POINT_SCALE 1
 #endif
 
 #ifndef LINE_COORDINATE_TYPE
-#define LINE_COORDINATE_TYPE int
+    #define LINE_COORDINATE_TYPE int
 #endif
 
 #ifndef LOG_ALREADY_DEFINED
-#define LOG
+    #define LOG
 #endif
 
 #define ROLL_SHIP
@@ -41,16 +45,25 @@ const float sqrt22 = pow(2.0, 0.5) * 0.5;
 unsigned long last_micros = 0;
 unsigned long micros_per_frame = 0;
 #ifdef DEBUG
-int faces_touched = 0;
-int faces_drawn = 0;
-int max_polygon_vertices = 0;
-int max_frustum_planes = 0;
-int segments_drawn = 0;
+    int faces_touched = 0;
+    int faces_drawn = 0;
+    int max_polygon_vertices = 0;
+    int max_frustum_planes = 0;
+    int segments_drawn = 0;
+#endif
+
+#ifdef MONITOR_RAM
+    int MIN_FREE_RAM = 0xffff;
+    void update_min_free_ram();
+    #define MONITOR_RAM_UPDATE update_min_free_ram();
+#else
+    #define MONITOR_RAM_UPDATE
 #endif
 
 struct vec3d
 {
     float x, y, z;
+
     vec3d()
         : x(0.0), y(0.0), z(0.0)
     {}
@@ -61,11 +74,13 @@ struct vec3d
 
     vec3d operator +(const vec3d& other)
     {
+        MONITOR_RAM_UPDATE
         return vec3d(x + other.x, y + other.y, z + other.z);
     }
 
     void operator +=(const vec3d& other)
     {
+        MONITOR_RAM_UPDATE
         x += other.x;
         y += other.y;
         z += other.z;
@@ -73,47 +88,55 @@ struct vec3d
 
     vec3d operator -(const vec3d& other)
     {
+        MONITOR_RAM_UPDATE
         return vec3d(x - other.x, y - other.y, z - other.z);
     }
 
     void operator -=(const vec3d& other)
     {
+        MONITOR_RAM_UPDATE
         x -= other.x;
         y -= other.y;
         z -= other.z;
     }
 
+    vec3d operator *(float d)
+    {
+        MONITOR_RAM_UPDATE
+        return vec3d(x * d, y * d, z * d);
+    }
+
     void operator *=(float d)
     {
+        MONITOR_RAM_UPDATE
         x *= d;
         y *= d;
         z *= d;
     }
 
-    vec3d operator *(float d)
-    {
-        return vec3d(x * d, y * d, z * d);
-    }
-
     float dot(const vec3d& other)
     {
+        MONITOR_RAM_UPDATE
         return x * other.x + y * other.y + z * other.z;
     }
 
-    vec3d cross(const vec3d& b)
+    vec3d cross(const vec3d& other)
     {
-        return vec3d((y * b.z) - (z * b.y),
-                     (z * b.x) - (x * b.z),
-                     (x * b.y) - (y * b.x));
+        MONITOR_RAM_UPDATE
+        return vec3d((y * other.z) - (z * other.y),
+                     (z * other.x) - (x * other.z),
+                     (x * other.y) - (y * other.x));
     }
 
     float length()
     {
+        MONITOR_RAM_UPDATE
         return sqrt(x * x + y * y + z * z);
     }
 
     void normalize()
     {
+        MONITOR_RAM_UPDATE
         float len1 = 1.0 / length();
         x *= len1;
         y *= len1;
@@ -122,6 +145,7 @@ struct vec3d
 
     void rotate(float yaw)
     {
+        MONITOR_RAM_UPDATE
         vec3d temp(x, y, z);
         float s = sin(yaw);
         float c = cos(yaw);
@@ -132,6 +156,7 @@ struct vec3d
 
     void rotate(float pitch, float yaw)
     {
+        MONITOR_RAM_UPDATE
         vec3d temp(x, y, z);
         float s = sin(pitch);
         float c = cos(pitch);
@@ -148,6 +173,7 @@ struct vec3d
 
     void rotate(float pitch, float yaw, float roll)
     {
+        MONITOR_RAM_UPDATE
         float s, c;
         vec3d temp;
         temp = vec3d(x, y, z);
@@ -169,7 +195,6 @@ struct vec3d
         y = -temp.x * s + temp.y * c;
         z = temp.z;
     }
-
 };
 
 struct plane
@@ -203,11 +228,13 @@ struct polygon
         : num_vertices(other.num_vertices)
         , draw_edges(other.draw_edges)
     {
+        MONITOR_RAM_UPDATE
         memcpy(vertices, other.vertices, sizeof(vertices));
     }
 
     void add_vertex(vec3d v, bool draw_edge)
     {
+        MONITOR_RAM_UPDATE
 #ifdef DEBUG
         if (max_polygon_vertices < num_vertices + 1)
             max_polygon_vertices = num_vertices + 1;
@@ -324,6 +351,7 @@ struct render_job_list
         , frustum_plane_count(other.frustum_plane_count)
         , frustum_plane_offset(other.frustum_plane_offset)
     {
+        MONITOR_RAM_UPDATE
         memcpy(jobs, other.jobs, sizeof(jobs));
     }
 
@@ -331,6 +359,7 @@ struct render_job_list
     // (in that case, the segment just won't be rendered)
     int add_job(byte segment, byte from_segment, byte requested_frustum_plane_count)
     {
+        MONITOR_RAM_UPDATE
         if (job_count >= MAX_JOB_COUNT || (next_render_jobs->frustum_plane_count + current_render_jobs->frustum_plane_count + requested_frustum_plane_count > MAX_SHARED_FRUSTUM_PLANES))
             return -1;
         frustum_plane_offset = (frustum_plane_offset + MAX_SHARED_FRUSTUM_PLANES - requested_frustum_plane_count) % MAX_SHARED_FRUSTUM_PLANES;
@@ -355,14 +384,13 @@ shot shots[MAX_SHOTS];
 
 render_job_list render_jobs_0, render_jobs_1;
 
-bool allow_steering;
+bool allow_steering = true;
 r_camera camera;
-
-int minFreeRam = 0xffff;
 
 #ifdef SUB_PIXEL_ACCURACY
 
 void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
+    MONITOR_RAM_UPDATE
     bool steep = abs(y1 - y0) > abs(x1 - x0);
 
     if (steep) {
@@ -415,32 +443,25 @@ void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
 
 #endif
 
-void updateMinFreeRam()
-{
-    if (gb.getFreeRam() < minFreeRam)
-        minFreeRam = gb.getFreeRam();
-}
-
 void title_screen()
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
+#ifdef SHOW_TITLE_SCREEN
     gb.titleScreen(F("CRUISER"));
+    allow_steering = false;
+#endif
     camera = r_camera();
     camera.at = vec3d(1.5, 0.5, 9.75);
     camera.current_segment = 0;
     num_shots = 0;
     camera.wobble = 0.0;
-    allow_steering = false;
 }
 
 void setup()
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     gb.begin();
+    gb.battery.show = false;
     title_screen();
     next_render_jobs = &render_jobs_0;
     current_render_jobs = &render_jobs_1;
@@ -450,9 +471,7 @@ void setup()
 
 void handle_controls()
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     if (gb.buttons.pressed(BTN_C))
         title_screen();
     if (gb.buttons.repeat(BTN_B, 1))
@@ -513,9 +532,7 @@ void handle_controls()
 // - 0xff if no collision
 byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_distance)
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     byte collided = 0xff;
     vec3d dir(*to - *from);
 
@@ -628,9 +645,7 @@ byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_dista
 
 void move_player()
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     camera.yaw += camera.ayaw;
     if (camera.yaw > PI2)
         camera.yaw -= PI2;
@@ -702,9 +717,7 @@ void move_player()
 
 void clip_polygon_against_plane(polygon* result, const vec3d& clip_plane_normal, polygon* source)
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     result->num_vertices = 0;
     result->draw_edges = 0;
     vec3d *v0 = NULL;
@@ -752,9 +765,7 @@ void clip_polygon_against_plane(polygon* result, const vec3d& clip_plane_normal,
 
 void clip_line_against_plane(polygon* result, const vec3d& clip_plane_normal, polygon* source)
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     result->num_vertices = 0;
     float d0 = source->vertices[0].dot(clip_plane_normal);
     float d1 = source->vertices[1].dot(clip_plane_normal);
@@ -771,9 +782,7 @@ void clip_line_against_plane(polygon* result, const vec3d& clip_plane_normal, po
 
 void transform_world_space_to_view_space(vec3d* v)
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     vec3d s(*v);
     s.x -= camera.at.x;
     s.y -= camera.at.y;
@@ -796,6 +805,7 @@ void transform_world_space_to_view_space(vec3d* v)
 
 void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_offset)
 {
+    MONITOR_RAM_UPDATE
     const sprite* s = &sprites[sprite_index];
     for (int i = 0; i < s->polygon_count; i++)
     {
@@ -868,9 +878,7 @@ void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_
 
 void render_segment(byte segment_index, byte frustum_count, byte frustum_offset, byte from_segment = 255)
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     segments_touched[segment_index >> 3] |= 1 << (segment_index & 7);
 #ifdef DEBUG
     segments_drawn++;
@@ -1112,6 +1120,7 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
 }
 void print_vec3d(const vec3d& v)
 {
+    MONITOR_RAM_UPDATE
     gb.display.print(v.x);
     gb.display.print(F(" "));
     gb.display.print(v.y);
@@ -1121,6 +1130,7 @@ void print_vec3d(const vec3d& v)
 
 void update_scene()
 {
+    MONITOR_RAM_UPDATE
     /*
         for (int i = 0; i < 12; i++)
         {
@@ -1146,9 +1156,6 @@ void update_scene()
         }
         return;
     */
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
 #ifdef DEBUG_SERIAL
     Serial.println("updating scene");
 #endif
@@ -1263,21 +1270,31 @@ void update_scene()
     last_micros = current_micros;
 #ifdef SHOW_FRAME_TIME
     gb.display.print((micros() - start_micros) / 1000.0);
-    gb.display.print(" ms");
+    gb.display.print(" ms / ");
+    gb.display.print(1e6 / micros_per_frame);
+    gb.display.println(" fps");
+    #ifdef MONITOR_RAM
+        gb.display.print(2048 - MIN_FREE_RAM);
+        gb.display.print(" bytes");
+    #endif
+    
 #endif
 }
 
 void loop()
 {
-#ifdef DEBUG
-    updateMinFreeRam();
-#endif
+    MONITOR_RAM_UPDATE
     if (gb.update())
     {
-        gb.battery.show = false;
         handle_controls();
         move_player();
         update_scene();
     }
 }
 
+#ifdef MONITOR_RAM
+    void update_min_free_ram() 
+    { 
+        if (gb.getFreeRam() < MIN_FREE_RAM) MIN_FREE_RAM = gb.getFreeRam(); 
+    }
+#endif
