@@ -35,13 +35,15 @@ const static word p_15[] PROGMEM = {0x1010,0x300e};
 const static byte v_16[] PROGMEM = {0x43,0x73,0x70,0x0,0x3,0x33};
 const static word p_16[] PROGMEM = {0x500f};
 const static byte v_17[] PROGMEM = {0x20,0x2,0x3,0x33,0x53,0x83,0x82,0x60};
-const static word p_17[] PROGMEM = {0x700a};
+const static word p_17[] PROGMEM = {0x1015,0x700a};
 const static byte v_18[] PROGMEM = {0x10,0x1,0x24,0x64,0x81,0x70};
 const static word p_18[] PROGMEM = {0x1013,0x3014,0x5009};
 const static byte v_19[] PROGMEM = {0x0,0x6,0x26,0x23};
 const static word p_19[] PROGMEM = {0x3012};
-const static byte v_20[] PROGMEM = {0x3,0x6,0x26,0x20};
-const static word p_20[] PROGMEM = {0x3012};
+const static byte v_20[] PROGMEM = {0x3,0x6,0x17,0x27,0x26,0x20};
+const static word p_20[] PROGMEM = {0x3015,0x5012};
+const static byte v_21[] PROGMEM = {0x1,0x11,0x10,0x0};
+const static word p_21[] PROGMEM = {0x1011,0x3014};
 
 const static segment segments[] PROGMEM = {
   {0,16,0,7,0x82,0x1,v_0,p_0,d_0},
@@ -61,14 +63,17 @@ const static segment segments[] PROGMEM = {
   {0,16,25,6,0x42,0x0,v_14,p_14,0},
   {0,16,26,5,0x42,0x0,v_15,p_15,0},
   {0,16,23,2,0x61,0x0,v_16,p_16,0},
-  {0,16,13,15,0x81,0x0,v_17,p_17,0},
+  {0,16,13,15,0x82,0x0,v_17,p_17,0},
   {0,16,4,10,0x63,0x0,v_18,p_18,0},
   {0,16,4,11,0x41,0x0,v_19,p_19,0},
-  {0,16,10,11,0x41,0x0,v_20,p_20,0}
+  {0,16,10,11,0x62,0x0,v_20,p_20,0},
+  {0,16,12,17,0x42,0x0,v_21,p_21,0}
 };
 
 const static int SEGMENTS_TOUCHED_SIZE = 3;
 byte segments_touched[SEGMENTS_TOUCHED_SIZE];
+
+byte segments_seen[SEGMENTS_TOUCHED_SIZE];
 
 const static int DOOR_COUNT = 1;
 long doors[DOOR_COUNT];

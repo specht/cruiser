@@ -36,6 +36,7 @@ public:
     Buttons();
     bool pressed(int button);
     bool released(int button);
+    bool held(int button, int duration);
     bool repeat(int button, int count);
     bool key_down[256];
 };

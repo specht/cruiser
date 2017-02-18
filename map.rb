@@ -194,6 +194,8 @@ def dump(io = STDOUT)
     io.puts "const static int SEGMENTS_TOUCHED_SIZE = #{(($segments.size - 1) >> 3) + 1};"
     io.puts "byte segments_touched[SEGMENTS_TOUCHED_SIZE];"
     io.puts
+    io.puts "byte segments_seen[SEGMENTS_TOUCHED_SIZE];"
+    io.puts
     io.puts "const static int DOOR_COUNT = #{$doors.size};"
     io.puts "long doors[DOOR_COUNT];"
 end
@@ -465,8 +467,16 @@ end
 
 segment(10, 14) do
     v 0, 3
-    v 2, 0
+    v 1, 1
+    v 1, 0
+    v 0, -1
     v 0, -6
+end
+
+segment(12, 18) do
+    v 1, 0
+    v 0, -1
+    v -1, 0
 end
 
 find_portals()

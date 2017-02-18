@@ -9,6 +9,8 @@ const long sqrt22 = 46340;
 
 #define MONITOR_RAM
 
+//#define DEBUG_REALLY_HARD_FIXED_POINT_LINE_DRAWING_PROBLEM
+
 #define MAX_POLYGON_VERTICES 8
 #define MAX_JOB_COUNT 3
 #define MAX_SHARED_FRUSTUM_PLANES 22
@@ -21,11 +23,7 @@ const long sqrt22 = 46340;
 
 #define SUB_PIXEL_ACCURACY
 
-#ifdef SUB_PIXEL_ACCURACY
 #define FIXED_POINT_SCALE 4
-#else
-#define FIXED_POINT_SCALE 0
-#endif
 
 #ifndef LINE_COORDINATE_TYPE
 #define LINE_COORDINATE_TYPE int
@@ -39,11 +37,14 @@ const long sqrt22 = 46340;
 #define WOBBLE_SHIP
 #define CLIP_TO_FRUSTUM
 //#define VARIABLE_ROOM_HEIGHT
-#define TOP_VIEW_SCALE 5
-//#define TOP_VIEW
+#define MIN_MAP_SCALE (1L << 16)
+#define MAX_MAP_SCALE (8L << 16)
 
 unsigned long last_micros = 0;
 unsigned long micros_per_frame = 0;
+bool map_mode;
+long map_scale;
+long map_dx, map_dy;
 #ifdef DEBUG
 int faces_touched = 0;
 int faces_drawn = 0;
@@ -127,8 +128,7 @@ struct vec3d
 
     long length()
     {
-        long l2 = dot(*this);
-        return lsqrt(l2);
+        return lsqrt(dot(*this));
     }
 
     void normalize()
@@ -192,20 +192,6 @@ struct vec3d
         y = (-temp.x >> 8) * s + (temp.y >> 8) * c;
         z = temp.z;
     }
-};
-
-struct plane
-{
-    vec3d n;
-    long d;
-
-    plane()
-        : d(0)
-    {}
-
-    plane(vec3d _n, long _d)
-        : n(_n), d(_d)
-    {}
 };
 
 struct polygon
@@ -291,6 +277,7 @@ struct r_camera
     long yaw, ayaw;
     long pitch, apitch;
     long a;
+    long xa, ya;
     int width;
     int height;
     word current_segment;
@@ -304,6 +291,8 @@ struct r_camera
         , pitch(0)
         , apitch(0)
         , a(0)
+        , xa(0)
+        , ya(0)
     {}
 };
 
@@ -435,6 +424,7 @@ long lsqrt(long a)
 #ifdef SUB_PIXEL_ACCURACY
 
 void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
+    LOG("draw line from %d, %d to %d, %d...\n", x0, y0, x1, y1);
     bool steep = abs(y1 - y0) > abs(x1 - x0);
 
     if (steep) {
@@ -463,7 +453,6 @@ void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
         {
             for (; error > dx2; ++y, error -= dx2);
             for (; error < 0; --y, error += dx2);
-            //_displayBuffer[y + (x / 8) * LCDWIDTH_NOROT] |= _BV(x % 8);
             gb.display.drawPixel(y, x);
             ++x, error += dy2;
         }
@@ -474,7 +463,6 @@ void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
         {
             for (; error > dx2; ++y, error -= dx2);
             for (; error < 0; --y, error += dx2);
-            //_displayBuffer[x + (y / 8) * LCDWIDTH_NOROT] |= _BV(y % 8);
             gb.display.drawPixel(x, y);
             ++x, error += dy2;
         }
@@ -499,6 +487,8 @@ void title_screen()
     camera.current_segment = 0;
     num_shots = 0;
     camera.wobble = 0.0;
+    memset(segments_seen, 0, SEGMENTS_TOUCHED_SIZE);
+    map_mode = false;
 }
 
 void setup()
@@ -507,6 +497,7 @@ void setup()
     stack_paint();
 #endif
     gb.begin();
+    //gb.setFrameRate(40);
     title_screen();
     next_render_jobs = &render_jobs_0;
     current_render_jobs = &render_jobs_1;
@@ -516,29 +507,56 @@ void setup()
 
 void handle_controls()
 {
+    bool a_pressed = gb.buttons.repeat(BTN_A, 1);
+    bool b_pressed = gb.buttons.repeat(BTN_B, 1);
     if (gb.buttons.pressed(BTN_C))
-        title_screen();
-    if (gb.buttons.repeat(BTN_B, 1))
     {
-        for (byte i = 0; i < 2; i++)
+        map_mode = !map_mode;
+        if (map_mode)
         {
-            if (num_shots < MAX_SHOTS)
+            map_scale = 5L << 16;
+            map_dx = 0;
+            map_dy = 0;
+            // stop all movement when entering map mode
+            camera.ayaw = 0;
+            camera.apitch = 0;
+            camera.a = 0;
+        }
+    }
+    if (gb.buttons.held(BTN_C, 20))
+        title_screen();
+    if (b_pressed)
+    {
+        if (map_mode)
+        {
+            map_scale -= 8192;
+            if (map_scale < MIN_MAP_SCALE)
+                map_scale = MIN_MAP_SCALE;
+        }
+        else
+        {
+            /*
+            for (byte i = 0; i < 2; i++)
             {
-                vec3d p(camera.at);
-                p -= camera.up * 0.05;
-                if (i == 0)
-                    p += camera.right * 0.05;
-                else
-                    p -= camera.right * 0.05;
-                shots[num_shots].x = (word)(p.x * 256.0);
-                shots[num_shots].y = (word)(p.y * 256.0);
-                shots[num_shots].z = (word)(p.z * 256.0);
-                shots[num_shots].dx = (word)(camera.forward.x * 127.0 + 127.0);
-                shots[num_shots].dy = (word)(camera.forward.y * 127.0 + 127.0);
-                shots[num_shots].dz = (word)(camera.forward.z * 127.0 + 127.0);
-                shots[num_shots].current_segment = camera.current_segment;
-                num_shots++;
+                if (num_shots < MAX_SHOTS)
+                {
+                    vec3d p(camera.at);
+                    p -= camera.up * 0.05;
+                    if (i == 0)
+                        p += camera.right * 0.05;
+                    else
+                        p -= camera.right * 0.05;
+                    shots[num_shots].x = (word)(p.x * 256.0);
+                    shots[num_shots].y = (word)(p.y * 256.0);
+                    shots[num_shots].z = (word)(p.z * 256.0);
+                    shots[num_shots].dx = (word)(camera.forward.x * 127.0 + 127.0);
+                    shots[num_shots].dy = (word)(camera.forward.y * 127.0 + 127.0);
+                    shots[num_shots].dz = (word)(camera.forward.z * 127.0 + 127.0);
+                    shots[num_shots].current_segment = camera.current_segment;
+                    num_shots++;
+                }
             }
+            */
         }
     }
 
@@ -546,26 +564,64 @@ void handle_controls()
         allow_steering = true;
     if (allow_steering)
     {
-        bool a_pressed = gb.buttons.repeat(BTN_A, 1);
-        if (gb.buttons.repeat(BTN_LEFT, 1))
+        if (map_mode)
         {
-            camera.ayaw = 80000;
+            long map_move = ((1L << 24) / (map_scale >> 8)) * (micros_per_frame >> 10) >> 5;
+            if (gb.buttons.repeat(BTN_LEFT, 1))
+            {
+                map_dx += map_move;
+            }
+            if (gb.buttons.repeat(BTN_RIGHT, 1))
+            {
+                map_dx -= map_move;
+            }
+            if (gb.buttons.repeat(BTN_DOWN, 1))
+            {
+                map_dy -= map_move;
+            }
+            if (gb.buttons.repeat(BTN_UP, 1))
+            {
+                map_dy += map_move;
+            }
+            if (a_pressed)
+            {
+                map_scale += 8192;
+                if (map_scale > MAX_MAP_SCALE)
+                    map_scale = MAX_MAP_SCALE;
+            }
         }
-        if (gb.buttons.repeat(BTN_RIGHT, 1))
+        else
         {
-            camera.ayaw = -80000;
-        }
-        if (gb.buttons.repeat(BTN_DOWN, 1))
-        {
-            camera.apitch = 80000;
-        }
-        if (gb.buttons.repeat(BTN_UP, 1))
-        {
-            camera.apitch = -80000;
-        }
-        if (a_pressed)
-        {
-            camera.a = 200000;
+            if (gb.buttons.repeat(BTN_LEFT, 1))
+            {
+                if (b_pressed)
+                    camera.xa = -200000;
+                else
+                    camera.ayaw = 80000;
+            }
+            if (gb.buttons.repeat(BTN_RIGHT, 1))
+            {
+                if (b_pressed)
+                    camera.xa = 200000;
+                else
+                    camera.ayaw = -80000;
+            }
+            if (gb.buttons.repeat(BTN_DOWN, 1))
+            {
+                if (b_pressed)
+                    camera.ya = -200000;
+                else
+                    camera.apitch = 80000;
+            }
+            if (gb.buttons.repeat(BTN_UP, 1))
+            {
+                if (b_pressed)
+                    camera.ya = 200000;
+                else
+                    camera.apitch = -80000;
+            }
+            if (a_pressed)
+                camera.a = 200000;
         }
     }
 }
@@ -740,16 +796,35 @@ void move_player()
 
     //    vec3d new_at = camera.at + camera.forward * camera.a + camera.up * camera.ya + camera.right * camera.xa;
     vec3d new_at = camera.at + camera.forward * (camera.a * (micros_per_frame >> 10) >> 10);
+    if (camera.xa < 0)
+        new_at -= camera.right * (-camera.xa * (micros_per_frame >> 10) >> 10);
+    else
+        new_at += camera.right * (camera.xa * (micros_per_frame >> 10) >> 10);
+        
+    if (camera.ya < 0)
+        new_at -= camera.up * (-camera.ya * (micros_per_frame >> 10) >> 10);
+    else
+        new_at += camera.up * (camera.ya * (micros_per_frame >> 10) >> 10);
+
+    if (camera.ya < 0)
+        camera.ya = -((-camera.ya * 205) >> 8); // * 0.8
+    else
+        camera.ya = (camera.ya * 205) >> 8; // * 0.8
+
+    if (camera.xa < 0)
+        camera.xa = -((-camera.xa * 205) >> 8); // * 0.8
+    else
+        camera.xa = (camera.xa * 205) >> 8; // * 0.8
 
 #ifdef COLLISION_DETECTION
-    if (camera.a > 0)
+    if (camera.a != 0 || camera.xa != 0 || camera.ya != 0)
         collision_detection(&camera.current_segment, &camera.at, &new_at, 16384);
 #endif
     camera.at = new_at;
 
     camera.a = (camera.a * 230) >> 8;
 
-    camera.wobble = (camera.wobble + 2000) % 65536;
+    camera.wobble = (camera.wobble + (micros_per_frame >> 5)) % 65536;
     camera.wobble_sin = lsin((camera.wobble >> 8) * (PI2 >> 8));
 
     // move shots
@@ -848,16 +923,23 @@ void transform_world_space_to_view_space(vec3d* v)
     s.x -= camera.at.x;
     s.y -= camera.at.y;
     s.z -= camera.at.z;
-    s.x >>= 8;
-    s.y >>= 8;
-    s.z >>= 8;
-    v->x =  s.x * (camera.right8.x  ) + s.y * (camera.right8.y  ) + s.z * (camera.right8.z  );
-    v->y =  s.x * (camera.up8.x     ) + s.y * (camera.up8.y     ) + s.z * (camera.up8.z     );
-    v->z = -s.x * (camera.forward8.x) - s.y * (camera.forward8.y) - s.z * (camera.forward8.z);
-#ifdef WOBBLE_SHIP
-    // add wobble
-    v->y += (camera.wobble_sin * 13) >> 8;
-#endif
+    if (!map_mode)
+    {
+        s.x >>= 8;
+        s.y >>= 8;
+        s.z >>= 8;
+        v->x =  s.x * (camera.right8.x  ) + s.y * (camera.right8.y  ) + s.z * (camera.right8.z  );
+        v->y =  s.x * (camera.up8.x     ) + s.y * (camera.up8.y     ) + s.z * (camera.up8.z     );
+        v->z = -s.x * (camera.forward8.x) - s.y * (camera.forward8.y) - s.z * (camera.forward8.z);
+        #ifdef WOBBLE_SHIP
+            // add wobble
+            v->y += (camera.wobble_sin * 13) >> 8;
+        #endif
+    }
+    else
+    {
+        *v = s;
+    }
 }
 
 void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_offset)
@@ -935,7 +1017,13 @@ void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_
 
 void render_segment(byte segment_index, byte frustum_count, byte frustum_offset, byte from_segment = 255)
 {
+    if (map_mode)
+    {
+        if ((((segments_seen[segment_index >> 3] >> (segment_index & 7)) & 1) == 0))
+            return;
+    }
     segments_touched[segment_index >> 3] |= 1 << (segment_index & 7);
+    segments_seen[segment_index >> 3] |= 1 << (segment_index & 7);
 #ifdef DEBUG
     segments_drawn++;
 #endif
@@ -1017,8 +1105,8 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         else
         {
             wall.set_vertex(0, p1, adjacent_segment == 0xffff);
-            wall.set_vertex(1, p0, true);
-            wall.set_vertex(2, p0, adjacent_segment == 0xffff);
+            wall.set_vertex(1, p0, !map_mode);
+            wall.set_vertex(2, p0, (!map_mode) && (adjacent_segment == 0xffff));
             // don't draw second vertical edge, it will be drawn by the adjacent wall
             wall.set_vertex(3, p1, false);
         }
@@ -1061,15 +1149,18 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         // clip wall polygon against frustum
         polygon* p_wall = &wall;
 #ifdef CLIP_TO_FRUSTUM
-        polygon* p_clipped_wall = &clipped_wall;
-        polygon* temp;
-        for (int k = 0; k < frustum_count; k++)
+        if (!map_mode)
         {
-            clip_polygon_against_plane(p_clipped_wall, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES], p_wall);
-            // break from loop if we have a degenerate polygon
-            temp = p_wall; p_wall = p_clipped_wall; p_clipped_wall = temp;
-            if (p_wall->num_vertices < 3)
-                break;
+            polygon* p_clipped_wall = &clipped_wall;
+            polygon* temp;
+            for (int k = 0; k < frustum_count; k++)
+            {
+                clip_polygon_against_plane(p_clipped_wall, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES], p_wall);
+                // break from loop if we have a degenerate polygon
+                temp = p_wall; p_wall = p_clipped_wall; p_clipped_wall = temp;
+                if (p_wall->num_vertices < 3)
+                    break;
+            }
         }
 #endif
 
@@ -1113,18 +1204,22 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
 
         for (int k = 0; k < p_wall->num_vertices; k++)
         {
-#ifdef TOP_VIEW
-            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_wall->vertices[k].x >> 16) + 42) << FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_wall->vertices[k].z >> 16) + 34) << FIXED_POINT_SCALE;
-#else
-            // LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_wall->vertices[k].x / -p_wall->vertices[k].z) << FIXED_POINT_SCALE;
-            // LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_wall->vertices[k].y / -p_wall->vertices[k].z) << FIXED_POINT_SCALE;
-            // instead of dividing by z twice, calculate 1/z and multiply with that (it's actually faster)
-            long z1 = (((-1L) << 24) / p_wall->vertices[k].z);
-            LINE_COORDINATE_TYPE tx = ((83 << FIXED_POINT_SCALE) + ((((p_wall->vertices[k].x * (83 << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
-            LINE_COORDINATE_TYPE ty = ((47 << FIXED_POINT_SCALE) - ((((p_wall->vertices[k].y * (83 << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
-
-#endif
+            LINE_COORDINATE_TYPE tx, ty;
+            if (map_mode)
+            {
+                tx = ((((map_scale >> 8) * ((p_wall->vertices[k].x + map_dx) >> 8)) >> 16) + 42) << FIXED_POINT_SCALE;
+                ty = ((((map_scale >> 8) * ((p_wall->vertices[k].z + map_dy) >> 8)) >> 16) + 34) << FIXED_POINT_SCALE;
+            }
+            else
+            {
+                // LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_wall->vertices[k].x / -p_wall->vertices[k].z) << FIXED_POINT_SCALE;
+                // LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_wall->vertices[k].y / -p_wall->vertices[k].z) << FIXED_POINT_SCALE;
+                // instead of dividing by z twice, calculate 1/z and multiply with that (it's actually faster)
+                long z1 = (((-1L) << 24) / p_wall->vertices[k].z);
+                tx = ((83 << FIXED_POINT_SCALE) + ((((p_wall->vertices[k].x * (83 << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+                ty = ((47 << FIXED_POINT_SCALE) - ((((p_wall->vertices[k].y * (83 << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+            }
+            
             if (k == 0)
             {
                 first_x = tx;
@@ -1214,6 +1309,7 @@ void print_vec3d(const vec3d& v)
 
 void update_scene()
 {
+    LOG("-----------------------\nupdating scene...\n");
     /*
         for (int i = 0; i < 12; i++)
         {
@@ -1282,14 +1378,22 @@ void update_scene()
                            job.from_segment);
         }
     }
-#ifdef TOP_VIEW
-    gb.display.drawLine(41, 34, 43, 34);
-    gb.display.drawLine(42, 34, 42, 32);
-    gb.display.drawLine(42, 34, 72, 4);
-    gb.display.drawLine(42, 34, 12, 4);
-#else
-    // draw crosshair
+    if (map_mode)
+    {
+        LINE_COORDINATE_TYPE tx, ty;
+        tx = ((((map_scale >> 8) * ((map_dx) >> 8)) >> 16) + 42) << FIXED_POINT_SCALE;
+        ty = ((((map_scale >> 8) * ((map_dy) >> 8)) >> 16) + 34) << FIXED_POINT_SCALE;
+        draw_line_fixed_point(tx - 16, ty, tx + 16, ty);
+        draw_line_fixed_point(tx, ty, tx, ty - 32);
+        /*
+        gb.display.drawLine(42, 34, 72, 4);
+        gb.display.drawLine(42, 34, 12, 4);
+        */
+    }
     /*
+    else
+    {
+        // draw crosshair
         gb.display.drawPixel(41, 24);
         gb.display.drawPixel(43, 24);
         gb.display.drawPixel(41, 26);
@@ -1312,15 +1416,31 @@ void update_scene()
         gb.display.drawPixel(45, 28);
         gb.display.drawPixel(46, 29);
         gb.display.drawPixel(47, 29);
+    }
     */
-#endif
     //gb.display.print(F("LUNAR OUTPOST        "));
 #ifdef DEBUG
 
 #endif
+#ifdef DEBUG_REALLY_HARD_FIXED_POINT_LINE_DRAWING_PROBLEM
+    draw_line_fixed_point(528, 640, 528, 416);
+    draw_line_fixed_point(528, 416, 640, 288);
+#endif
     unsigned long current_micros = micros();
     micros_per_frame = current_micros - last_micros;
     last_micros = current_micros;
+    if (map_mode)
+    {
+        gb.display.print("AUTOMAP");
+        gb.display.println();
+        gb.display.println();
+        gb.display.println();
+        gb.display.println();
+        gb.display.println();
+        gb.display.println();
+        gb.display.println();
+        gb.display.print("       hold C to quit");
+    }
 #ifdef SHOW_FRAME_TIME
     gb.display.print((micros() - start_micros) / 1000.0);
     gb.display.print(" ms / ");

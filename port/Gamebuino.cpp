@@ -46,6 +46,11 @@ bool Buttons::released(int button)
     return !key_down[button_to_key(button)];
 }
 
+bool Buttons::held(int button, int duration)
+{
+    return false;
+}
+
 bool Buttons::repeat(int button, int count)
 {
     return key_down[button_to_key(button)];
@@ -84,8 +89,8 @@ void Display::print(double d)
 void Display::drawLine(int x0, int y0, int x1, int y1)
 {
     glBegin(GL_LINES);
-    glVertex2i(x0, y0);
-    glVertex2i(x1, y1);
+    glVertex2i(x0 >> 4, y0 >> 4);
+    glVertex2i(x1 >> 4, y1 >> 4);
     glEnd();
 }
 
