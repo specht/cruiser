@@ -389,7 +389,9 @@ end
 
 segment(4, 9) do
     v 0, 1
-    v 8, 0
+    v 1, 0
+    v 6, 0
+    v 1, 0
     v 0, -1
 end
 
@@ -445,6 +447,26 @@ segment(15, 15) do
     v 3, 0
     v 0, -1
     v -2, -2
+end
+
+segment(5, 10) do
+    v -1, 1
+    v 2, 3
+    v 4, 0
+    v 2, -3
+    v -1, -1
+end
+
+segment(4, 11) do
+    v 0, 6
+    v 2, 0
+    v 0, -3
+end
+
+segment(10, 14) do
+    v 0, 3
+    v 2, 0
+    v 0, -6
 end
 
 find_portals()
