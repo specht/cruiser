@@ -2,17 +2,17 @@
 //#include <avr/pgmspace.h>
 Gamebuino gb;
 
-const float PI2 = PI * 2.0;
-const float PI180 = PI / 180.0;
-const float PI128 = PI / 128.0;
-const float sqrt22 = pow(2.0, 0.5) * 0.5;
+const long PI2 = 411774;
+const int PI180 = 1143;
+const int PI128 = 1608;
+const long sqrt22 = 46340;
 
-#define MONITOR_RAM
+//#define MONITOR_RAM
 
 #define MAX_POLYGON_VERTICES 8
 #define MAX_JOB_COUNT 3
 #define MAX_SHARED_FRUSTUM_PLANES 22
-#define MAX_RENDER_ADJACENT_SEGMENTS 8
+#define MAX_RENDER_ADJACENT_SEGMENTS 0
 #define MAX_SHOTS 12
 //#define DEBUG
 #define SHOW_FRAME_TIME
@@ -35,11 +35,11 @@ const float sqrt22 = pow(2.0, 0.5) * 0.5;
     #define LOG
 #endif
 
-#define ROLL_SHIP
-#define WOBBLE_SHIP
+//#define ROLL_SHIP
+//#define WOBBLE_SHIP
 #define CLIP_TO_FRUSTUM
 //#define VARIABLE_ROOM_HEIGHT
-#define TOP_VIEW_SCALE 5.0
+#define TOP_VIEW_SCALE 5
 //#define TOP_VIEW
 
 unsigned long last_micros = 0;
@@ -54,13 +54,13 @@ unsigned long micros_per_frame = 0;
 
 struct vec3d
 {
-    float x, y, z;
+    long x, y, z;
 
     vec3d()
-        : x(0.0), y(0.0), z(0.0)
+        : x(0), y(0), z(0)
     {}
 
-    vec3d(float _x, float _y, float _z)
+    vec3d(long _x, long _y, long _z)
         : x(_x), y(_y), z(_z)
     {}
 
@@ -88,104 +88,111 @@ struct vec3d
         z -= other.z;
     }
 
-    vec3d operator *(float d)
+    vec3d operator *(long d)
     {
-        return vec3d(x * d, y * d, z * d);
+        d >>= 8;
+        return vec3d((x >> 8) * d, (y >> 8) * d, (z >> 8) * d);
     }
 
-    void operator *=(float d)
+    void operator *=(long d)
     {
-        x *= d;
-        y *= d;
-        z *= d;
+        d >>= 8;
+        x = (x >> 8) * d;
+        y = (y >> 8) * d;
+        z = (z >> 8) * d;
     }
 
     float dot(const vec3d& other)
     {
-        return x * other.x + y * other.y + z * other.z;
+        return (x >> 8) * (other.x >> 8) + 
+               (y >> 8) * (other.y >> 8) + 
+               (z >> 8) * (other.z >> 8);
     }
 
     vec3d cross(const vec3d& other)
     {
-        return vec3d((y * other.z) - (z * other.y),
-                     (z * other.x) - (x * other.z),
-                     (x * other.y) - (y * other.x));
+        return vec3d(((y >> 8) * (other.z >> 8)) - ((z >> 8) * (other.y >> 8)),
+                     ((z >> 8) * (other.x >> 8)) - ((x >> 8) * (other.z >> 8)),
+                     ((x >> 8) * (other.y >> 8)) - ((y >> 8) * (other.x >> 8)));
     }
 
-    float length()
+    long length()
     {
-        return sqrt(x * x + y * y + z * z);
+        long l2 = dot(*this);
+        return (long)(sqrt((float)l2 / 65536.0) * 65356.0);
     }
 
     void normalize()
     {
-        float len1 = 1.0 / length();
-        x *= len1;
-        y *= len1;
-        z *= len1;
+        long l = length();
+        l = ((65535 + l) / l) >> 8;
+        
+        x = (x >> 8) * l;
+        y = (y >> 8) * l;
+        z = (z >> 8) * l;
     }
 
     void rotate(float yaw)
     {
-        vec3d temp(x, y, z);
-        float s = sin(yaw);
-        float c = cos(yaw);
-        x = temp.x * c + temp.z * s;
-        y = temp.y;
-        z = temp.x * s + temp.z * c;
+//         vec3d temp(x, y, z);
+//         float s = sin(yaw);
+//         float c = cos(yaw);
+//         x = temp.x * c + temp.z * s;
+//         y = temp.y;
+//         z = temp.x * s + temp.z * c;
     }
 
     void rotate(float pitch, float yaw)
     {
-        vec3d temp(x, y, z);
-        float s = sin(pitch);
-        float c = cos(pitch);
-        x = temp.x;
-        y = -temp.z * s + temp.y * c;
-        z = temp.z * c + temp.y * s;
-        temp = vec3d(x, y, z);
-        s = sin(yaw);
-        c = cos(yaw);
-        x = temp.x * c + temp.z * s;
-        y = temp.y;
-        z = temp.x * s + temp.z * c;
+//         vec3d temp(x, y, z);
+//         float s = sin(pitch);
+//         float c = cos(pitch);
+//         x = temp.x;
+//         y = -temp.z * s + temp.y * c;
+//         z = temp.z * c + temp.y * s;
+//         temp = vec3d(x, y, z);
+//         s = sin(yaw);
+//         c = cos(yaw);
+//         x = temp.x * c + temp.z * s;
+//         y = temp.y;
+//         z = temp.x * s + temp.z * c;
     }
 
     void rotate(float pitch, float yaw, float roll)
     {
-        float s, c;
-        vec3d temp;
-        temp = vec3d(x, y, z);
-        s = sin(yaw);
-        c = cos(yaw);
-        x = temp.x * c + temp.z * s;
-        y = temp.y;
-        z = temp.x * s + temp.z * c;
-        temp = vec3d(x, y, z);
-        s = sin(pitch);
-        c = cos(pitch);
-        x = temp.x;
-        y = -temp.z * s + temp.y * c;
-        z = temp.z * c + temp.y * s;
-        temp = vec3d(x, y, z);
-        s = sin(roll);
-        c = cos(roll);
-        x = temp.x * c + temp.y * s;
-        y = -temp.x * s + temp.y * c;
-        z = temp.z;
+//         float s, c;
+//         vec3d temp;
+//         temp = vec3d(x, y, z);
+//         s = sin(yaw);
+//         c = cos(yaw);
+//         x = temp.x * c + temp.z * s;
+//         y = temp.y;
+//         z = temp.x * s + temp.z * c;
+//         temp = vec3d(x, y, z);
+//         s = sin(pitch);
+//         c = cos(pitch);
+//         x = temp.x;
+//         y = -temp.z * s + temp.y * c;
+//         z = temp.z * c + temp.y * s;
+//         temp = vec3d(x, y, z);
+//         s = sin(roll);
+//         c = cos(roll);
+//         x = temp.x * c + temp.y * s;
+//         y = -temp.x * s + temp.y * c;
+//         z = temp.z;
     }
 };
 
 struct plane
 {
     vec3d n;
-    float d;
+    long d;
 
     plane()
-        : d(0.0)
+        : d(0)
     {}
 
-    plane(vec3d _n, float _d)
+    plane(vec3d _n, long _d)
         : n(_n), d(_d)
     {}
 };
@@ -266,11 +273,11 @@ struct r_camera
     int height;
     word current_segment;
 #ifdef ROLL_SHIP
-    float roll_sin, roll_cos;
+    long roll_sin, roll_cos;
 #endif
-    float wobble;
-    float wobble_sin;
-    float wobble_shift;
+    long wobble;
+    long wobble_sin;
+    long wobble_shift;
 
     r_camera()
         : yaw(0.0)
@@ -456,7 +463,7 @@ void title_screen()
 #endif
     gb.battery.show = false;
     camera = r_camera();
-    camera.at = vec3d(1.5, 0.5, 9.75);
+    camera.at = vec3d((long)(1.5 * 65536), (long)(0.5 * 65536), (long)(9.75 * 65536));
     camera.current_segment = 0;
     num_shots = 0;
     camera.wobble = 0.0;
@@ -667,13 +674,14 @@ void move_player()
     // auto-leveling
     camera.pitch *= 0.95;
 
-    camera.up = vec3d(0.0, 1.0, 0.0);
-    camera.forward = vec3d(0.0, 0.0, -1.0);
-    camera.up.rotate(camera.pitch, camera.yaw);
-    camera.forward.rotate(camera.pitch, camera.yaw);
+    camera.up = vec3d(0, 65536, 0);
+    camera.forward = vec3d(0, 0, -65536);
+//    camera.up.rotate(camera.pitch, camera.yaw);
+//    camera.forward.rotate(camera.pitch, camera.yaw);
     camera.right = camera.forward.cross(camera.up);
 
-    vec3d new_at = camera.at + camera.forward * camera.a + camera.up * camera.ya + camera.right * camera.xa;
+//    vec3d new_at = camera.at + camera.forward * camera.a + camera.up * camera.ya + camera.right * camera.xa;
+    vec3d new_at = camera.at + camera.forward * (camera.a * 65536.0);
 #ifdef COLLISION_DETECTION
     if (camera.a > 0.0)
         collision_detection(&camera.current_segment, &camera.at, &new_at, 0.25);
@@ -685,11 +693,11 @@ void move_player()
     camera.ya *= 0.9;
 
 #ifdef ROLL_SHIP
-    camera.roll_sin = sin(camera.ayaw * 0.7);
-    camera.roll_cos = cos(camera.ayaw * 0.7);
+    camera.roll_sin = (long)(sin(camera.ayaw * 0.7) * 65536);
+    camera.roll_cos = (long)(cos(camera.ayaw * 0.7) * 65536);
 #endif
-    camera.wobble = fmod(camera.wobble + micros_per_frame * 0.5e-6, 1.0);
-    camera.wobble_sin = sin(camera.wobble * PI2);
+    camera.wobble = (long)(fmod((float)(camera.wobble / 65536.0) + micros_per_frame * 0.5e-6, 1.0) * 65536);
+    camera.wobble_sin = (long)(sin(camera.wobble * PI2) * 65536);
 
     // move shots
     for (int i = 0; i < num_shots; i++)
@@ -724,7 +732,7 @@ void clip_polygon_against_plane(polygon* result, const vec3d& clip_plane_normal,
     result->draw_edges = 0;
     vec3d *v0 = NULL;
     vec3d *v1 = NULL;
-    float d0, d1;
+    long d0, d1;
     bool flag0, flag1;
     for (int i = 0; i < source->num_vertices; i++)
     {
@@ -738,21 +746,23 @@ void clip_polygon_against_plane(polygon* result, const vec3d& clip_plane_normal,
         {
             v0 = &source->vertices[i];
             d0 = v0->dot(clip_plane_normal);
-            // CAVEAT: d >= 0.0 would result in degenerate faces which we would spend time on!
-            flag0 = (d0 > 0.0);
+            // CAVEAT: d >= 0 would result in degenerate faces which we would spend time on!
+            flag0 = (d0 > 0);
         }
         v1 = &source->vertices[(i + 1) % source->num_vertices];
         d1 = v1->dot(clip_plane_normal);
-        flag1 = (d1 > 0.0);
+        flag1 = (d1 > 0);
 
         vec3d intersection;
         if (flag0 ^ flag1)
         {
-            float f = -d1 / (d0 - d1);
-            float f1 = 1.0 - f;
-            intersection = vec3d(v0->x * f + v1->x * f1,
-                                 v0->y * f + v1->y * f1,
-                                 v0->z * f + v1->z * f1);
+            long f = (-d1 << 8) / ((d0 - d1) >> 8);
+            long f1 = 65536 - f;
+            f >>= 8;
+            f1 >>= 8;
+            intersection = vec3d((v0->x >> 8) * f + (v1->x >> 8) * f1,
+                                 (v0->y >> 8) * f + (v1->y >> 8) * f1,
+                                 (v0->z >> 8) * f + (v1->z >> 8) * f1);
         }
         if (flag0)
         {
@@ -787,19 +797,19 @@ void transform_world_space_to_view_space(vec3d* v)
     s.x -= camera.at.x;
     s.y -= camera.at.y;
     s.z -= camera.at.z;
-    v->x =  s.x * camera.right.x   + s.y * camera.right.y   + s.z * camera.right.z;
-    v->y =  s.x * camera.up.x      + s.y * camera.up.y      + s.z * camera.up.z;
-    v->z = -s.x * camera.forward.x - s.y * camera.forward.y - s.z * camera.forward.z;
+    v->x = ( s.x / 256) * (camera.right.x   / 256) + (s.y / 256) * (camera.right.y   / 256) + (s.z / 256) * (camera.right.z / 256);
+    v->y = ( s.x / 256) * (camera.up.x      / 256) + (s.y / 256) * (camera.up.y      / 256) + (s.z / 256) * (camera.up.z / 256);
+    v->z = (-s.x / 256) * (camera.forward.x / 256) - (s.y / 256) * (camera.forward.y / 256) - (s.z / 256) * (camera.forward.z / 256);
 #ifdef ROLL_SHIP
     // roll camera view
     s.x = v->x;
     s.y = v->y;
-    v->x =  s.x * camera.roll_cos + s.y * camera.roll_sin;
-    v->y = -s.x * camera.roll_sin + s.y * camera.roll_cos;
+    v->x = ( s.x / 256) * (camera.roll_cos / 256) + (s.y / 256) * (camera.roll_sin / 256);
+    v->y = (-s.x / 256) * (camera.roll_sin / 256) + (s.y / 256) * (camera.roll_cos / 256);
 #endif
 #ifdef WOBBLE_SHIP
     // add wobble
-    v->y += camera.wobble_sin * 0.05;
+    v->y += (camera.wobble_sin >> 8) * 13;
 #endif
 }
 
@@ -937,12 +947,12 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         faces_touched += 1;
 #endif
 
-        float floor_height = 0.0;
+        long floor_height = 0;
 #ifdef VARIABLE_ROOM_HEIGHT
         floor_height = (float)pgm_read_byte(&segments[segment_index].floor_height) / 16.0;
 #endif
-        vec3d p0(x0, floor_height, z0);
-        vec3d p1(x1, floor_height, z1);
+        vec3d p0(x0 * 65536, floor_height, z0 * 65536);
+        vec3d p1(x1 * 65536, floor_height, z1 * 65536);
 
         // construct wall polygon
         polygon wall;
@@ -953,7 +963,7 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         wall.add_vertex(p0, adjacent_segment == 0xffff);
         // don't draw second vertical edge, it will be drawn by the adjacent wall
         wall.add_vertex(p1, false);
-        float ceiling_height = 1.0;
+        long ceiling_height = 65536;
 #ifdef VARIABLE_ROOM_HEIGHT
         ceiling_height = (float)pgm_read_byte(&segments[segment_index].ceiling_height) / 16.0;
 #endif
@@ -1034,8 +1044,8 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         for (int k = 0; k < p_wall->num_vertices; k++)
         {
 #ifdef TOP_VIEW
-            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_wall->vertices[k].x) + 42) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_wall->vertices[k].z) + 34) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_wall->vertices[k].x / 65536) + 42) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_wall->vertices[k].z / 65536) + 34) * FIXED_POINT_SCALE;
 #else
             LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_wall->vertices[k].x / -p_wall->vertices[k].z) * FIXED_POINT_SCALE;
             LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_wall->vertices[k].y / -p_wall->vertices[k].z) * FIXED_POINT_SCALE;
@@ -1102,10 +1112,10 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         if (p_flare_polygon->num_vertices == 2)
         {
 #ifdef TOP_VIEW
-            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].x) + 42) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].z) + 34) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE tx2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].x) + 42) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].z) + 34) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].x / 65536) + 42) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].z / 65536) + 34) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].x / 65536) + 42) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].z / 65536) + 34) * FIXED_POINT_SCALE;
 #else
             LINE_COORDINATE_TYPE tx = ((41.5 + 41.5 * p_flare_polygon->vertices[0].x / -p_flare_polygon->vertices[0].z)) * FIXED_POINT_SCALE;
             LINE_COORDINATE_TYPE ty = ((23.5 - 41.5 * p_flare_polygon->vertices[0].y / -p_flare_polygon->vertices[0].z)) * FIXED_POINT_SCALE;
@@ -1118,11 +1128,11 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
 }
 void print_vec3d(const vec3d& v)
 {
-    gb.display.print(v.x);
+    gb.display.print((float)(v.x / 65536.0));
     gb.display.print(F(" "));
-    gb.display.print(v.y);
+    gb.display.print((float)(v.y / 65536.0));
     gb.display.print(F(" "));
-    gb.display.print(v.z);
+    gb.display.print((float)(v.z / 65536.0));
 }
 
 void update_scene()
@@ -1168,10 +1178,10 @@ void update_scene()
     *next_render_jobs = render_job_list();
     // prepare camera frustum
     // PRO TIP: put the planes first which discard the most faces (left and right)
-    shared_frustum_planes[0] = vec3d(1.15, 0.0, -1.17);
-    shared_frustum_planes[1] = vec3d(-1.15, 0.0, -1.17);
-    shared_frustum_planes[2] = vec3d(0.0, 2.02, -1.17);
-    shared_frustum_planes[3] = vec3d(0.0, -2.02, -1.17);
+    shared_frustum_planes[0] = vec3d((long)(65536.0 * 1.15), 0, (long)(65536.0 * -1.17));
+    shared_frustum_planes[1] = vec3d((long)(65536.0 * -1.15), 0, (long)(65536.0 * -1.17));
+    shared_frustum_planes[2] = vec3d(0, (long)(65536.0 * 2.02), (long)(65536.0 * -1.17));
+    shared_frustum_planes[3] = vec3d(0, (long)(65536.0 * -2.02), (long)(65536.0 * -1.17));
     current_render_jobs->frustum_plane_offset = 0;
     next_render_jobs->frustum_plane_offset = MAX_SHARED_FRUSTUM_PLANES - 1;
     // render current segment first
@@ -1229,37 +1239,9 @@ void update_scene()
 #endif
     //gb.display.print(F("LUNAR OUTPOST        "));
 #ifdef DEBUG
-    updateMinFreeRam();
     //gb.display.print(camera.current_segment);
     //gb.display.print(" ");
-    //print_vec3d(camera.at);
-    gb.display.println();
-    gb.display.println();
-    gb.display.println();
-    gb.display.println();
-    //print_vec3d(camera.forward);
-    gb.display.println();
-    //print_vec3d(camera.up);
-    gb.display.println();
-    //print_vec3d(camera.right);
-    gb.display.print(F("FT"));
-    gb.display.print(faces_touched);
-    gb.display.print(F("/FD"));
-    gb.display.print(faces_drawn);
-    gb.display.print(F("/CS"));
-    gb.display.print(camera.current_segment);
-    gb.display.print(F("/PV"));
-    gb.display.print(max_polygon_vertices);
-    //  gb.display.print(F("/FP"));
-    //  gb.display.print(max_frustum_planes);
-    gb.display.print(F("/S"));
-    gb.display.print(segments_drawn);
-    gb.display.println();
-    gb.display.print(F("RAM: "));
-    gb.display.print(minFreeRam);
-    gb.display.print(F("/"));
-    gb.display.print(gb.getFreeRam());
-    gb.display.print(F(" / "));
+    print_vec3d(camera.at);
 #endif
     unsigned long current_micros = micros();
     micros_per_frame = current_micros - last_micros;
