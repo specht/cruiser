@@ -61,6 +61,11 @@ void Display::println(const char* s)
 //     printf("%s\n", s);
 }
 
+void Display::print(long l)
+{
+//     printf("%d", i);
+}
+
 void Display::print(int i)
 {
 //     printf("%d", i);

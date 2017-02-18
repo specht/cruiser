@@ -8,7 +8,7 @@
 #include <time.h>
 
 #define SCREEN_SCALE 8
-#define LINE_COORDINATE_TYPE float
+#define LINE_COORDINATE_TYPE int
 #define LOG_ALREADY_DEFINED
 
 #define byte uint8_t
@@ -44,6 +44,7 @@ class Display {
 public:
     void print(const char* s = "");
     void println(const char* s = "");
+    void print(long l);
     void print(int i);
     void print(float f);
     void print(double d);

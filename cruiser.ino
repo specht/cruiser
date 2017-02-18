@@ -2,17 +2,17 @@
 //#include <avr/pgmspace.h>
 Gamebuino gb;
 
-const long PI2 = 411774;
+const long PI2 = 411775;
 const int PI180 = 1143;
 const int PI128 = 1608;
 const long sqrt22 = 46340;
 
-//#define MONITOR_RAM
+#define MONITOR_RAM
 
 #define MAX_POLYGON_VERTICES 8
 #define MAX_JOB_COUNT 3
 #define MAX_SHARED_FRUSTUM_PLANES 22
-#define MAX_RENDER_ADJACENT_SEGMENTS 0
+#define MAX_RENDER_ADJACENT_SEGMENTS 8
 #define MAX_SHOTS 12
 //#define DEBUG
 #define SHOW_FRAME_TIME
@@ -22,9 +22,9 @@ const long sqrt22 = 46340;
 #define SUB_PIXEL_ACCURACY
 
 #ifdef SUB_PIXEL_ACCURACY
-    #define FIXED_POINT_SCALE 16
+    #define FIXED_POINT_SCALE 4
 #else
-    #define FIXED_POINT_SCALE 1
+    #define FIXED_POINT_SCALE 0
 #endif
 
 #ifndef LINE_COORDINATE_TYPE
@@ -35,8 +35,8 @@ const long sqrt22 = 46340;
     #define LOG
 #endif
 
-//#define ROLL_SHIP
-//#define WOBBLE_SHIP
+#define ROLL_SHIP
+#define WOBBLE_SHIP
 #define CLIP_TO_FRUSTUM
 //#define VARIABLE_ROOM_HEIGHT
 #define TOP_VIEW_SCALE 5
@@ -52,6 +52,10 @@ unsigned long micros_per_frame = 0;
     int segments_drawn = 0;
 #endif
 
+long lsin(long a);
+long lcos(long a);
+long lsqrt(long a);
+
 struct vec3d
 {
     long x, y, z;
@@ -63,6 +67,11 @@ struct vec3d
     vec3d(long _x, long _y, long _z)
         : x(_x), y(_y), z(_z)
     {}
+
+    vec3d divby256()
+    {
+        return vec3d(x >> 8, y >> 8, z >> 8);
+    }
 
     vec3d operator +(const vec3d& other)
     {
@@ -102,7 +111,7 @@ struct vec3d
         z = (z >> 8) * d;
     }
 
-    float dot(const vec3d& other)
+    long dot(const vec3d& other)
     {
         return (x >> 8) * (other.x >> 8) + 
                (y >> 8) * (other.y >> 8) + 
@@ -119,20 +128,20 @@ struct vec3d
     long length()
     {
         long l2 = dot(*this);
-        return (long)(sqrt((float)l2 / 65536.0) * 65356.0);
+        return lsqrt(l2);
     }
 
     void normalize()
     {
         long l = length();
-        l = ((65535 + l) / l) >> 8;
+        l = ((l + 65536) / l) >> 8;
         
         x = (x >> 8) * l;
         y = (y >> 8) * l;
         z = (z >> 8) * l;
     }
 
-    void rotate(float yaw)
+    void rotate(long yaw)
     {
 //         vec3d temp(x, y, z);
 //         float s = sin(yaw);
@@ -142,44 +151,46 @@ struct vec3d
 //         z = temp.x * s + temp.z * c;
     }
 
-    void rotate(float pitch, float yaw)
+    void rotate(long pitch, long yaw)
     {
-//         vec3d temp(x, y, z);
-//         float s = sin(pitch);
-//         float c = cos(pitch);
-//         x = temp.x;
-//         y = -temp.z * s + temp.y * c;
-//         z = temp.z * c + temp.y * s;
-//         temp = vec3d(x, y, z);
-//         s = sin(yaw);
-//         c = cos(yaw);
-//         x = temp.x * c + temp.z * s;
-//         y = temp.y;
-//         z = temp.x * s + temp.z * c;
+        long s, c;
+        vec3d temp(x, y, z);
+        s = lsin(pitch) >> 8;
+        c = lcos(pitch) >> 8;
+        x = temp.x;
+        y = (-temp.z >> 8) * s + (temp.y >> 8) * c;
+        z = (temp.z >> 8) * c + (temp.y >> 8) * s;
+        temp = vec3d(x, y, z);
+        s = lsin(yaw) >> 8;
+        c = lcos(yaw) >> 8;
+        x = (temp.x >> 8) * c + (temp.z >> 8) * s;
+        y = temp.y;
+        z = (temp.x >> 8) * s + (temp.z >> 8) * c;
     }
 
-    void rotate(float pitch, float yaw, float roll)
+    void rotate(long pitch, long yaw, long roll)
     {
-//         float s, c;
-//         vec3d temp;
-//         temp = vec3d(x, y, z);
-//         s = sin(yaw);
-//         c = cos(yaw);
-//         x = temp.x * c + temp.z * s;
-//         y = temp.y;
-//         z = temp.x * s + temp.z * c;
-//         temp = vec3d(x, y, z);
-//         s = sin(pitch);
-//         c = cos(pitch);
-//         x = temp.x;
-//         y = -temp.z * s + temp.y * c;
-//         z = temp.z * c + temp.y * s;
-//         temp = vec3d(x, y, z);
-//         s = sin(roll);
-//         c = cos(roll);
-//         x = temp.x * c + temp.y * s;
-//         y = -temp.x * s + temp.y * c;
-//         z = temp.z;
+        long s, c;
+        vec3d temp(x, y, z);
+        s = lsin(pitch) >> 8;
+        c = lcos(pitch) >> 8;
+        x = temp.x;
+        y = (-temp.z >> 8) * s + (temp.y >> 8) * c;
+        z = (temp.z >> 8) * c + (temp.y >> 8) * s;
+        
+        temp = vec3d(x, y, z);
+        s = lsin(yaw) >> 8;
+        c = lcos(yaw) >> 8;
+        x = (temp.x >> 8) * c + (temp.z >> 8) * s;
+        y = temp.y;
+        z = (temp.x >> 8) * s + (temp.z >> 8) * c;
+        
+        temp = vec3d(x, y, z);
+        s = lsin(roll) >> 8;
+        c = lcos(roll) >> 8;
+        x = (temp.x >> 8) * c + (temp.y >> 8) * s;
+        y = (-temp.x >> 8) * s + (temp.y >> 8) * c;
+        z = temp.z;
     }
 };
 
@@ -231,6 +242,20 @@ struct polygon
         num_vertices++;
     };
 
+    void set_vertex(byte index, vec3d v, bool draw_edge)
+    {
+#ifdef DEBUG
+        if (max_polygon_vertices < index + 1)
+            max_polygon_vertices = index + 1;
+#endif
+        if (index >= MAX_POLYGON_VERTICES)
+            return;
+        memcpy(&vertices[index], &v, sizeof(vec3d));
+        if (draw_edge)
+            draw_edges |= (1 << index);
+        else
+            draw_edges &= ~(1 << index);
+    };
 };
 
 struct segment
@@ -261,32 +286,24 @@ struct sprite
 struct r_camera
 {
     vec3d at;
-    vec3d up;
-    vec3d forward;
-    vec3d right;
-    float yaw, ayaw;
-    float pitch, apitch;
-    float a;
-    float ya;
-    float xa;
+    vec3d up, forward, right;
+    vec3d up8, forward8, right8;
+    long yaw, ayaw;
+    long pitch, apitch;
+    long a;
     int width;
     int height;
     word current_segment;
-#ifdef ROLL_SHIP
-    long roll_sin, roll_cos;
-#endif
     long wobble;
     long wobble_sin;
     long wobble_shift;
 
     r_camera()
-        : yaw(0.0)
-        , ayaw(0.0)
-        , pitch(0.0)
-        , apitch(0.0)
-        , a(0.0)
-        , ya(0.0)
-        , xa(0.0)
+        : yaw(0)
+        , ayaw(0)
+        , pitch(0)
+        , apitch(0)
+        , a(0)
     {}
 };
 
@@ -400,6 +417,21 @@ size_t max_ram_usage()
 } 
 #endif
 
+long lsin(long a)
+{
+    return (long)(sin((float)a / 65536.0) * 65536.0);
+}
+
+long lcos(long a)
+{
+    return (long)(cos((float)a / 65536.0) * 65536.0);
+}
+
+long lsqrt(long a)
+{
+    return (long)(sqrt((float)a / 65536.0) * 65356.0);
+}
+
 #ifdef SUB_PIXEL_ACCURACY
 
 void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
@@ -417,11 +449,11 @@ void draw_line_fixed_point(int x0, int y0, int x1, int y1) {
         t = y0; y0 = y1; y1 = t;
     }
 
-    long dx = x1 - x0;
-    long dy = y1 - y0;
-    long dx2 = dx * 2 * FIXED_POINT_SCALE;
-    long dy2 = dy * 2 * FIXED_POINT_SCALE;
-    long error = (dx * (y0 & 0xf) + dy * (8 - (x0 & 0xf))) * 2;
+    int dx = x1 - x0;
+    int dy = y1 - y0;
+    long dx2 = (long)dx << 5;
+    long dy2 = (long)dy << 5;
+    long error = (dx * (y0 & 0xf) + dy * (8 - (x0 & 0xf))) << 1;
     int x = x0 >> 4;
     int y = y0 >> 4;
 
@@ -517,23 +549,23 @@ void handle_controls()
         bool a_pressed = gb.buttons.repeat(BTN_A, 1);
         if (gb.buttons.repeat(BTN_LEFT, 1))
         {
-            camera.ayaw = 1.0 * micros_per_frame * 1e-6;
+            camera.ayaw = 5000;
         }
         if (gb.buttons.repeat(BTN_RIGHT, 1))
         {
-            camera.ayaw = -1.0 * micros_per_frame * 1e-6;
+            camera.ayaw = -5000;
         }
         if (gb.buttons.repeat(BTN_DOWN, 1))
         {
-            camera.apitch = 1.0 * micros_per_frame * 1e-6;
+            camera.apitch = 5000;
         }
         if (gb.buttons.repeat(BTN_UP, 1))
         {
-            camera.apitch = -1.0 * micros_per_frame * 1e-6;
+            camera.apitch = -5000;
         }
         if (a_pressed)
         {
-            camera.a = 2.0 * micros_per_frame * 1e-6;
+            camera.a = 8000;
         }
     }
 }
@@ -542,35 +574,35 @@ void handle_controls()
 // - 0xfd for floor collision
 // - 0xfe for ceiling collision
 // - 0xff if no collision
-byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_distance)
+byte collision_detection(word* segment, vec3d* from, vec3d* to, long bump_distance)
 {
     byte collided = 0xff;
     vec3d dir(*to - *from);
 
     // perform collision detection for floor and ceiling
     // default: heading for the floor
-    vec3d n(0.0, -1.0, 0.0);
+    vec3d n(0, -65536, 0);
 #ifdef VARIABLE_ROOM_HEIGHT
     float y = (float)pgm_read_byte(&segments[*segment].floor_height) / 16.0;
 #else
-    float y = 0.0;
+    long y = 0;
 #endif
     byte collision_code = 0xfd;
-    if (dir.y > 0.0)
+    if (dir.y > 0)    
     {
         // heading for the ceiling
-        n.y = 1.0;
+        n.y = 65536;
 #ifdef VARIABLE_ROOM_HEIGHT
         y = (float)pgm_read_byte(&segments[*segment].ceiling_height) / 16.0;
 #else
-        y = 1.0;
+        y = 65536;
 #endif
         collision_code = 0xfe;
     }
-    vec3d p(0.0, y - 0.1 * n.y, 0.0);
+    vec3d p(0, y - ((n.y * 26) >> 8), 0);
     p -= *to;
-    float f = p.dot(n);
-    if (f < 0.0)
+    long f = p.dot(n);
+    if (f < 0)
     {
         // project trajectory onto floor/ceiling and continue
         *to += n * f;
@@ -605,27 +637,27 @@ byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_dista
         int z0 = pgm_read_byte(&segments[*segment].y) + (pgm_read_byte(&vertices[i % num_points]) & 0xf);
         int x1 = pgm_read_byte(&segments[*segment].x) + (pgm_read_byte(&vertices[(i + 1) % num_points]) >> 4);
         int z1 = pgm_read_byte(&segments[*segment].y) + (pgm_read_byte(&vertices[(i + 1) % num_points]) & 0xf);
-        vec3d n(z0 - z1, 0.0, x1 - x0);
+        vec3d n(((long)z0 - z1) << 16, 0, ((long)x1 - x0) << 16);
         // perform collision detection if we're facing this wall
         // TODO: speed this up with binary search
-        if (n.dot(dir) > 0.0)
+        if (n.dot(dir) > 0)
         {
             if (adjacent_segment == 0xffff)
             {
                 // it's a wall
-                vec3d wall_p((float)x0, 0.0, (float)z0);
+                vec3d wall_p((long)x0 << 16, 0, (long)z0 << 16);
                 // we actually have to normalize n here, because we want a fixed distance to the walls (bump_distance)
                 // TODO: try normal_scale lookup, it might help a bit
                 n.normalize();
                 wall_p -= n * bump_distance;
                 wall_p -= *to;
-                float f = wall_p.dot(n);
-                if (f < 0.0)
+                long f = wall_p.dot(n);
+                if (f < 0)
                 {
                     // project trajectory onto wall and continue
                     vec3d temp = *to + n * f;
-                    if ((temp - vec3d(x0, 0.0, z0)).dot(vec3d(x1 - x0, 0.0, z1 - z0)) > 0.0 &&
-                            (temp - vec3d(x1, 0.0, z1)).dot(vec3d(x0 - x1, 0.0, z0 - z1)) > 0.0)
+                    //if ((temp - vec3d((long)x0 << 16, 0, (long)z0 << 16)).dot(vec3d(((long)x1 - x0) << 16, 0, ((long)z1 - z0) << 16)) > 0 &&
+                    //    (temp - vec3d((long)x1 << 16, 0, (long)z1 << 16)).dot(vec3d(((long)x0 - x1) << 16, 0, ((long)z0 - z1) << 16)) > 0)
                     {
                         // we're actually hitting this wall, not another wall that shares the same plane
                         *to = temp;
@@ -637,10 +669,10 @@ byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_dista
             else
             {
                 // it's a portal
-                vec3d wall_p((float)x0, 0.0, (float)z0);
+                vec3d wall_p((long)x0 << 16, 0.0, (long)z0 << 16);
                 wall_p -= *to;
-                float f = wall_p.dot(n);
-                if (f < 0.0)
+                long f = wall_p.dot(n);
+                if (f < 0)
                 {
                     // yup, we've crossed the portal, move camera to adjacent segment
                     //LOG("crossed a portal: from %d to %d\n", *segment, adjacent_segment);
@@ -657,47 +689,46 @@ byte collision_detection(word* segment, vec3d* from, vec3d* to, float bump_dista
 void move_player()
 {
     camera.yaw += camera.ayaw;
-    if (camera.yaw > PI2)
-        camera.yaw -= PI2;
-    if (camera.yaw < 0)
-        camera.yaw += PI2;
-    camera.ayaw *= 0.8;
+    camera.yaw %= PI2;
+    camera.ayaw = (camera.ayaw * 205) >> 8; // * 0.8
 
     camera.pitch += camera.apitch;
-    while (camera.pitch > PI)
-        camera.pitch -= PI2;
-    while (camera.pitch < -PI)
-        camera.pitch += PI2;
-
-    camera.apitch *= 0.8;
+    camera.pitch %= PI2;
+    camera.apitch = (camera.apitch * 205) >> 8; // * 0.8
 
     // auto-leveling
-    camera.pitch *= 0.95;
+    camera.pitch = (camera.pitch * 243) >> 8; // * 0.95
 
     camera.up = vec3d(0, 65536, 0);
     camera.forward = vec3d(0, 0, -65536);
-//    camera.up.rotate(camera.pitch, camera.yaw);
-//    camera.forward.rotate(camera.pitch, camera.yaw);
+    
+    // TODO: re-use sine and cosine values for both following rotations!
+#ifdef ROLL_SHIP
+    camera.up.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 8);
+    camera.forward.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 8);
+#else
+    camera.up.rotate(camera.pitch, camera.yaw);
+    camera.forward.rotate(camera.pitch, camera.yaw);
+#endif
+    
     camera.right = camera.forward.cross(camera.up);
+    
+    camera.up8 = camera.up.divby256();
+    camera.forward8 = camera.forward.divby256();
+    camera.right8 = camera.right.divby256();
 
 //    vec3d new_at = camera.at + camera.forward * camera.a + camera.up * camera.ya + camera.right * camera.xa;
-    vec3d new_at = camera.at + camera.forward * (camera.a * 65536.0);
+    vec3d new_at = camera.at + camera.forward * camera.a;
 #ifdef COLLISION_DETECTION
-    if (camera.a > 0.0)
-        collision_detection(&camera.current_segment, &camera.at, &new_at, 0.25);
+    if (camera.a > 0)
+        collision_detection(&camera.current_segment, &camera.at, &new_at, 16384);
 #endif
-
     camera.at = new_at;
 
-    camera.a *= 0.9;
-    camera.ya *= 0.9;
+    camera.a = (camera.a * 230) >> 8;
 
-#ifdef ROLL_SHIP
-    camera.roll_sin = (long)(sin(camera.ayaw * 0.7) * 65536);
-    camera.roll_cos = (long)(cos(camera.ayaw * 0.7) * 65536);
-#endif
-    camera.wobble = (long)(fmod((float)(camera.wobble / 65536.0) + micros_per_frame * 0.5e-6, 1.0) * 65536);
-    camera.wobble_sin = (long)(sin(camera.wobble * PI2) * 65536);
+    camera.wobble = (camera.wobble + 2000) % 65536;
+    camera.wobble_sin = lsin((camera.wobble >> 8) * (PI2 >> 8));
 
     // move shots
     for (int i = 0; i < num_shots; i++)
@@ -797,24 +828,20 @@ void transform_world_space_to_view_space(vec3d* v)
     s.x -= camera.at.x;
     s.y -= camera.at.y;
     s.z -= camera.at.z;
-    v->x = ( s.x / 256) * (camera.right.x   / 256) + (s.y / 256) * (camera.right.y   / 256) + (s.z / 256) * (camera.right.z / 256);
-    v->y = ( s.x / 256) * (camera.up.x      / 256) + (s.y / 256) * (camera.up.y      / 256) + (s.z / 256) * (camera.up.z / 256);
-    v->z = (-s.x / 256) * (camera.forward.x / 256) - (s.y / 256) * (camera.forward.y / 256) - (s.z / 256) * (camera.forward.z / 256);
-#ifdef ROLL_SHIP
-    // roll camera view
-    s.x = v->x;
-    s.y = v->y;
-    v->x = ( s.x / 256) * (camera.roll_cos / 256) + (s.y / 256) * (camera.roll_sin / 256);
-    v->y = (-s.x / 256) * (camera.roll_sin / 256) + (s.y / 256) * (camera.roll_cos / 256);
-#endif
+    s.x >>= 8;
+    s.y >>= 8;
+    s.z >>= 8;
+    v->x =  s.x * (camera.right8.x  ) + s.y * (camera.right8.y  ) + s.z * (camera.right8.z  );
+    v->y =  s.x * (camera.up8.x     ) + s.y * (camera.up8.y     ) + s.z * (camera.up8.z     );
+    v->z = -s.x * (camera.forward8.x) - s.y * (camera.forward8.y) - s.z * (camera.forward8.z);
 #ifdef WOBBLE_SHIP
     // add wobble
-    v->y += (camera.wobble_sin >> 8) * 13;
+    v->y += (camera.wobble_sin * 13) >> 8;
 #endif
 }
 
 void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_offset)
-{
+{/*
     const sprite* s = &sprites[sprite_index];
     for (int i = 0; i < s->polygon_count; i++)
     {
@@ -861,11 +888,11 @@ void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_
         for (int k = 0; k < p_polygon->num_vertices; k++)
         {
 #ifdef TOP_VIEW
-            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_polygon->vertices[k].x) + 42) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_polygon->vertices[k].z) + 34) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_polygon->vertices[k].x) + 42) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_polygon->vertices[k].z) + 34) << FIXED_POINT_SCALE;
 #else
-            LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_polygon->vertices[k].x / -p_polygon->vertices[k].z) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_polygon->vertices[k].y / -p_polygon->vertices[k].z) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_polygon->vertices[k].x / -p_polygon->vertices[k].z) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_polygon->vertices[k].y / -p_polygon->vertices[k].z) << FIXED_POINT_SCALE;
 #endif
             if (k == 0)
             {
@@ -883,6 +910,7 @@ void render_sprite(byte sprite_index, vec3d p, byte frustum_count, byte frustum_
         if ((p_polygon->draw_edges >> (p_polygon->num_vertices - 1)) & 1)
             draw_line_fixed_point(last_x, last_y, first_x, first_y);
     }
+    */
 }
 
 void render_segment(byte segment_index, byte frustum_count, byte frustum_offset, byte from_segment = 255)
@@ -906,6 +934,7 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
     word adjacent_segment;
     int x0, z0, x1, z1;
     int x1_z1_from_point = -1;
+    polygon wall;
     for (int i = 0; i < num_points; i++)
     {
         adjacent_segment = 0xffff;
@@ -920,11 +949,15 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
                 continue;
         }
 
-        if (x1_z1_from_point == ((i + 1) % num_points))
+        bool also_drew_previous_wall = (x1_z1_from_point == ((i + 1) % num_points));
+        if (also_drew_previous_wall)
         {
             // re-use the coordinates we already read to save calls to pgm_read_byte
             x0 = x1;
             z0 = z1;
+            // if we have constructed a wall before, let's re-use the previously transformed vertices
+            wall.vertices[1] = wall.vertices[0];
+            wall.vertices[2] = wall.vertices[3];
         }
         else
         {
@@ -951,18 +984,24 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
 #ifdef VARIABLE_ROOM_HEIGHT
         floor_height = (float)pgm_read_byte(&segments[segment_index].floor_height) / 16.0;
 #endif
-        vec3d p0(x0 * 65536, floor_height, z0 * 65536);
-        vec3d p1(x1 * 65536, floor_height, z1 * 65536);
+        vec3d p0((long)x0 << 16, floor_height, (long)z0 << 16);
+        vec3d p1((long)x1 << 16, floor_height, (long)z1 << 16);
 
         // construct wall polygon
-        polygon wall;
-        polygon clipped_wall;
-
-        wall.add_vertex(p1, adjacent_segment == 0xffff);
-        wall.add_vertex(p0, true);
-        wall.add_vertex(p0, adjacent_segment == 0xffff);
-        // don't draw second vertical edge, it will be drawn by the adjacent wall
-        wall.add_vertex(p1, false);
+        wall.num_vertices = 4;
+        if (also_drew_previous_wall)
+        {
+            wall.set_vertex(0, p1, adjacent_segment == 0xffff);
+            wall.set_vertex(3, p1, false);
+        }
+        else
+        {
+            wall.set_vertex(0, p1, adjacent_segment == 0xffff);
+            wall.set_vertex(1, p0, true);
+            wall.set_vertex(2, p0, adjacent_segment == 0xffff);
+            // don't draw second vertical edge, it will be drawn by the adjacent wall
+            wall.set_vertex(3, p1, false);
+        }
         long ceiling_height = 65536;
 #ifdef VARIABLE_ROOM_HEIGHT
         ceiling_height = (float)pgm_read_byte(&segments[segment_index].ceiling_height) / 16.0;
@@ -985,9 +1024,20 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
 #endif
 
         // transform wall to view space
-        for (int k = 0; k < wall.num_vertices; k++)
-            transform_world_space_to_view_space(&wall.vertices[k]);
+        // TODO: This is done twice as often as required because we don't 
+        // re-use transformed vertices from the last wall
+        if (also_drew_previous_wall)
+        {
+            transform_world_space_to_view_space(&wall.vertices[0]);
+            transform_world_space_to_view_space(&wall.vertices[3]);
+        }
+        else
+        {
+            for (int k = 0; k < wall.num_vertices; k++)
+                transform_world_space_to_view_space(&wall.vertices[k]);
+        }
 
+        polygon clipped_wall;
         // clip wall polygon against frustum
         polygon* p_wall = &wall;
 #ifdef CLIP_TO_FRUSTUM
@@ -1039,16 +1089,21 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         faces_drawn += 1;
 #endif
 
-        LINE_COORDINATE_TYPE first_x, first_y, last_x, last_y;
+        int first_x, first_y, last_x, last_y;
 
         for (int k = 0; k < p_wall->num_vertices; k++)
         {
 #ifdef TOP_VIEW
-            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_wall->vertices[k].x / 65536) + 42) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_wall->vertices[k].z / 65536) + 34) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_wall->vertices[k].x >> 16) + 42) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_wall->vertices[k].z >> 16) + 34) << FIXED_POINT_SCALE;
 #else
-            LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_wall->vertices[k].x / -p_wall->vertices[k].z) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_wall->vertices[k].y / -p_wall->vertices[k].z) * FIXED_POINT_SCALE;
+            // LINE_COORDINATE_TYPE tx = (41.5 + 41.5 * p_wall->vertices[k].x / -p_wall->vertices[k].z) << FIXED_POINT_SCALE;
+            // LINE_COORDINATE_TYPE ty = (23.5 - 41.5 * p_wall->vertices[k].y / -p_wall->vertices[k].z) << FIXED_POINT_SCALE;
+            // instead of dividing by z twice, calculate 1/z and multiply with that (it's actually faster)
+            long z1 = (((-1L) << 16) / (p_wall->vertices[k].z >> 8));
+            LINE_COORDINATE_TYPE tx = ((83 << FIXED_POINT_SCALE) + ((((p_wall->vertices[k].x * (83 << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+            LINE_COORDINATE_TYPE ty = ((47 << FIXED_POINT_SCALE) - ((((p_wall->vertices[k].y * (83 << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+            
 #endif
             if (k == 0)
             {
@@ -1076,6 +1131,7 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
     */
 
     // render shots in this segment
+    /*
     for (byte i = 0; i < num_shots; i++)
     {
         if (shots[i].current_segment != segment_index)
@@ -1112,19 +1168,20 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         if (p_flare_polygon->num_vertices == 2)
         {
 #ifdef TOP_VIEW
-            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].x / 65536) + 42) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].z / 65536) + 34) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE tx2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].x / 65536) + 42) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].z / 65536) + 34) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].x / 65536) + 42) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[0].z / 65536) + 34) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].x / 65536) + 42) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty2 = ((TOP_VIEW_SCALE * p_flare_polygon->vertices[1].z / 65536) + 34) << FIXED_POINT_SCALE;
 #else
-            LINE_COORDINATE_TYPE tx = ((41.5 + 41.5 * p_flare_polygon->vertices[0].x / -p_flare_polygon->vertices[0].z)) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty = ((23.5 - 41.5 * p_flare_polygon->vertices[0].y / -p_flare_polygon->vertices[0].z)) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE tx2 = ((41.5 + 41.5 * p_flare_polygon->vertices[1].x / -p_flare_polygon->vertices[1].z)) * FIXED_POINT_SCALE;
-            LINE_COORDINATE_TYPE ty2 = ((23.5 - 41.5 * p_flare_polygon->vertices[1].y / -p_flare_polygon->vertices[1].z)) * FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx = ((41.5 + 41.5 * p_flare_polygon->vertices[0].x / -p_flare_polygon->vertices[0].z)) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty = ((23.5 - 41.5 * p_flare_polygon->vertices[0].y / -p_flare_polygon->vertices[0].z)) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE tx2 = ((41.5 + 41.5 * p_flare_polygon->vertices[1].x / -p_flare_polygon->vertices[1].z)) << FIXED_POINT_SCALE;
+            LINE_COORDINATE_TYPE ty2 = ((23.5 - 41.5 * p_flare_polygon->vertices[1].y / -p_flare_polygon->vertices[1].z)) << FIXED_POINT_SCALE;
 #endif
             draw_line_fixed_point(tx, ty, tx2, ty2);
         }
     }
+    */
 }
 void print_vec3d(const vec3d& v)
 {
@@ -1239,9 +1296,10 @@ void update_scene()
 #endif
     //gb.display.print(F("LUNAR OUTPOST        "));
 #ifdef DEBUG
-    //gb.display.print(camera.current_segment);
-    //gb.display.print(" ");
-    print_vec3d(camera.at);
+    gb.display.print(camera.current_segment);
+    gb.display.print(" ");
+    //print_vec3d(camera.at);
+    
 #endif
     unsigned long current_micros = micros();
     micros_per_frame = current_micros - last_micros;
