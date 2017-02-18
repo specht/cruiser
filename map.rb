@@ -8,8 +8,27 @@ $ay = 0
 $segments = []
 $doors = []
 
+class Array
+    def each_with_next_and_indices(&block)
+        (0...self.size).each do |a|
+            b = (a + 1) % self.size
+            yield(self[a], self[b], a, b)
+        end
+    end
+
+    def each_with_prev_and_next_and_indices(&block)
+        (0...self.size).each do |b|
+            a = (b + self.size - 1) % self.size
+            c = (b + 1) % self.size
+            yield(self[a], self[b], self[c], a, b, c)
+        end
+    end
+end
+
 def v(dx, dy)
-    $segments.last[:vertices] << [dx, dy]
+    $segments.last[:p][0] += dx
+    $segments.last[:p][1] += dy
+    $segments.last[:vertices] << [$segments.last[:p][0], $segments.last[:p][1]]
 end
 
 def height(floor, ceiling)
@@ -18,16 +37,18 @@ def height(floor, ceiling)
 end
 
 def door(dx, dy)
-    $segments.last[:doors][$segments.last[:vertices].size] = $doors.size
+    $segments.last[:doors][$segments.last[:vertices].size - 1] = $doors.size
     $doors << {:segment_index => $segments.size - 1, :vertex_index => $segments.last[:vertices].size}
-    $segments.last[:vertices] << [dx, dy]
+    $segments.last[:p][0] += dx
+    $segments.last[:p][1] += dy
+    $segments.last[:vertices] << [$segments.last[:p][0], $segments.last[:p][1]]
 end
 
 def segment(x0, y0, &block)
     $segments << {
         :offset => [0, 0],
-        :p0 => [x0, y0],
-        :vertices => [],
+        :p => [x0, y0],
+        :vertices => [[x0, y0]],
         :portals => {},
         :doors => {},
         :floor_height => 0,
@@ -42,40 +63,39 @@ end
 
 def find_portals()
     tags = {}
-    # auto-close paths if necessary
-    $segments.each.with_index do |segment, segment_index|
-        ax = segment[:p0][0]
-        ay = segment[:p0][1]
-        segment[:vertices].each.with_index do |p, vertex_index|
-            ax += p[0]
-            ay += p[1]
-        end
-        # auto-close path if necessary
-        unless ax == segment[:p0][0] && ay == segment[:p0][1]
-            segment[:vertices] << [segment[:p0][0] - ax, segment[:p0][1] - ay]
-        end
-    end
     $segments.each.with_index do |segment, segment_index|
         minx = 255
         miny = 255
-        ax = segment[:p0][0]
-        ay = segment[:p0][1]
         segment[:vertices].each.with_index do |p, vertex_index|
-            minx = ax if ax < minx
-            miny = ay if ay < miny
-            oax = ax
-            oay = ay
-            ax += p[0]
-            ay += p[1]
-            minx = ax if ax < minx
-            miny = ay if ay < miny
-            tag = [[oax, oay, ax, ay].join(','), [ax, ay, oax, oay].join(',')].sort
-            tags[tag] ||= []
-            tags[tag] << {:segment_index => segment_index, :vertex_index => ((vertex_index + segment[:vertices].size - 1) % segment[:vertices].size)}
+            x0 = segment[:vertices][vertex_index][0]
+            y0 = segment[:vertices][vertex_index][1]
+            x1 = segment[:vertices][(vertex_index + 1) % segment[:vertices].size][0]
+            y1 = segment[:vertices][(vertex_index + 1) % segment[:vertices].size][1]
+            minx = x0 if x0 < minx
+            miny = y0 if y0 < miny
         end
         segment[:offset] = [minx, miny]
-        segment[:p0][0] -= segment[:offset][0]
-        segment[:p0][1] -= segment[:offset][1]
+        segment[:vertices].each.with_index do |p, vertex_index|
+            segment[:vertices][vertex_index][0] -= segment[:offset][0]
+            segment[:vertices][vertex_index][1] -= segment[:offset][1]
+        end
+        # delete last vertex if segment has been closed in the definition
+        if segment[:vertices].last.to_json == segment[:vertices].first.to_json
+#             raise "Segment is not closed (line #{segment[:line]})"
+            segment[:vertices].delete_at(segment[:vertices].size - 1)
+        end
+        segment.delete(:p)
+    end
+    $segments.each.with_index do |segment, segment_index|
+        segment[:vertices].each_with_next_and_indices do |p0, p1, vertex_index|
+            x0 = p0[0] + segment[:offset][0]
+            y0 = p0[1] + segment[:offset][1]
+            x1 = p1[0] + segment[:offset][0]
+            y1 = p1[1] + segment[:offset][1]
+            tag = [[x0, y0, x1, y1].join(','), [x1, y1, x0, y0].join(',')].sort
+            tags[tag] ||= []
+            tags[tag] << {:segment_index => segment_index, :edge_index => vertex_index}
+        end
     end
     tags.select! do |tag, entries|
         entries.size > 1
@@ -85,23 +105,36 @@ def find_portals()
         if entries.size != 2
             raise 'The number of shared edges is TOO DAMN HIGH!'
         end
-        $segments[entries[0][:segment_index]][:portals][entries[0][:vertex_index]] = entries[1][:segment_index]
-        $segments[entries[1][:segment_index]][:portals][entries[1][:vertex_index]] = entries[0][:segment_index]
+        # create two portals for every wall shared between two segments
+        $segments[entries[0][:segment_index]][:portals][entries[0][:edge_index]] = entries[1][:segment_index]
+        $segments[entries[1][:segment_index]][:portals][entries[1][:edge_index]] = entries[0][:segment_index]
     end
+    $segments.each.with_index do |segment, segment_index|
+        segment[:doors].each_pair do |edge_index, door_index|
+            adjacent_segment_index = segment[:portals][edge_index]
+            candidates = $segments[adjacent_segment_index][:portals].keys.select do |adjacent_segment_edge_index|
+                $segments[adjacent_segment_index][:portals][adjacent_segment_edge_index] == segment_index
+            end
+            if candidates.size != 1
+                raise 'Expected exactly one candidate.'
+            end
+            $segments[adjacent_segment_index][:doors][candidates.first] = door_index
+        end
+    end
+    
+#     STDERR.puts $segments.to_yaml
 end
 
 def dump(io = STDOUT)
     vertex_bytes_for_segment = []
     portal_words_for_segment = []
-    normal_scale_for_dxdy = {}
+    door_words_for_segment = []
     $segments.each.with_index do |segment, _|
-        ax = segment[:p0][0]
-        ay = segment[:p0][1]
+        sx, sy = *segment[:offset]
         vertices = []
         vertex_bytes = []
         segment[:vertices].each do |p|
-            ax += p[0]
-            ay += p[1]
+            ax, ay = *p
             if ax < 0 || ax > 15 || ay < 0 || ay > 15
                 raise 'Coordinates out of range.'
             end
@@ -113,56 +146,56 @@ def dump(io = STDOUT)
             vertices << [ax, ay]
             vertex_bytes << sprintf('0x%x', (ax << 4 | ay))
         end
-        segment[:vertices].each.with_index do |p, _|
-            p0 = vertices[_]
-            p1 = vertices[(_ + 1) % segment[:vertices].size]
-            dx = p0[1] - p1[1]
-            dy = p1[0] - p0[0]
-            n = [dx, dy]
-            len = 1.0 / ((n[0] * n[0] + n[1] * n[1]) ** 0.5)
-            tag = [dx.abs, dy.abs].sort
-            normal_scale_for_dxdy[(tag[0] << 4) | tag[1]] = len;
-        end
+#         segment[:vertices].each.with_index do |p, _|
+#             p0 = vertices[_]
+#             p1 = vertices[(_ + 1) % segment[:vertices].size]
+#             dx = p0[1] - p1[1]
+#             dy = p1[0] - p0[0]
+#             n = [dx, dy]
+#             len = 1.0 / ((n[0] * n[0] + n[1] * n[1]) ** 0.5)
+#             tag = [dx.abs, dy.abs].sort
+#         end
         portal_words = []
         segment[:portals].keys.sort.each do |vertex_index|
             portal_words << sprintf('0x%x', ((vertex_index << 12) | (segment[:portals][vertex_index] & 0xfff)))
         end
+        door_words = []
+        segment[:doors].keys.sort.each do |vertex_index|
+            door_words << sprintf('0x%x', ((vertex_index << 12) | (segment[:doors][vertex_index] & 0xfff)))
+        end
         vertex_bytes_for_segment << vertex_bytes.join(',')
         portal_words_for_segment << portal_words.join(',')
+        door_words_for_segment << door_words.join(',')
     end
-#     io.puts "const static word num_normal_scale_for_dxdy = #{normal_scale_for_dxdy.size};"
-#     io.puts "const static normal_scale_for_dxdy normal_scales[] PROGMEM = {"
-#     normal_scale_for_dxdy.keys.sort.each.with_index do |tag, _|
-#         io.print "  {#{tag}, #{sprintf('%1.6g', normal_scale_for_dxdy[tag])}}"
-#         if _ < normal_scale_for_dxdy.size - 1
-#             io.print ','
-#         end
-#         io.puts
-#     end
-#     io.puts "};"
     $segments.each.with_index do |segment, _|
         io.puts "const static byte v_#{_}[] PROGMEM = {#{vertex_bytes_for_segment[_]}};"
         io.puts "const static word p_#{_}[] PROGMEM = {#{portal_words_for_segment[_]}};"
+        unless segment[:doors].empty?
+            io.puts "const static word d_#{_}[] PROGMEM = {#{door_words_for_segment[_]}};"
+        end
     end
+    io.puts
     io.puts "const static segment segments[] PROGMEM = {"
     $segments.each.with_index do |segment, _|
         io.print "  {#{segment[:floor_height]},#{segment[:ceiling_height]},#{segment[:offset].join(',')},"
         io.print "#{sprintf('0x%x', (segment[:vertices].size << 4) | segment[:portals].size)},"
+        io.print "#{sprintf('0x%x', segment[:doors].size)},"
         io.print "v_#{_},"
-        io.print "p_#{_}"
+        io.print "p_#{_},"
+        if segment[:doors].empty?
+            io.print "0"
+        else
+            io.print "d_#{_}"
+        end
         io.puts "}#{_ < $segments.size - 1 ? ',' : ''}"
-    #     const static segment segments[] = {
-    #   {
-    #     0, 16,
-    #     0, 7,
-    #     6, BP {0x03, 0x33, 0x31, 0x20, 0x10, 0x01},
-    #     2, BP {1, 3, 3, 1},
-    #   },
-
     end
     io.puts "};"
+    io.puts
     io.puts "const static int SEGMENTS_TOUCHED_SIZE = #{(($segments.size - 1) >> 3) + 1};"
     io.puts "byte segments_touched[SEGMENTS_TOUCHED_SIZE];"
+    io.puts
+    io.puts "const static int DOOR_COUNT = #{$doors.size};"
+    io.puts "long doors[DOOR_COUNT];"
 end
 
 def dump_svg(io)
@@ -173,22 +206,12 @@ def dump_svg(io)
     $segments.each.with_index do |segment, segment_index|
         sx = segment[:offset][0]
         sy = segment[:offset][1]
-        ax = segment[:p0][0]
-        ay = segment[:p0][1]
-        vertex_bytes = []
         segment[:vertices].each.with_index do |p, vertex_index|
-            if vertex_index == 0
-                x = sx + ax
-                y = sy + ay
-                width = x if x > width
-                height = y if y > height
-            end
-            ax += p[0]
-            ay += p[1]
-            x = sx + ax
-            y = sy + ay
-            width = x if x > width
-            height = y if y > height
+            ax, ay = *p
+            ax += sx
+            ay += sy
+            width = ax if ax > width
+            height = ay if ay > height
         end
     end
     width += 1
@@ -199,18 +222,13 @@ def dump_svg(io)
     $segments.each.with_index do |segment, segment_index|
         sx = segment[:offset][0]
         sy = segment[:offset][1]
-        ax = segment[:p0][0]
-        ay = segment[:p0][1]
         vertex_bytes = []
         io.print "<polygon points='"
         segment[:vertices].each.with_index do |p, vertex_index|
+            ax, ay = *p
             if vertex_index == 0
                 io.print "#{(sx + ax) * 4 + 0.5},#{(sy + ay) * 4 + 0.5},"
-#                 cx += (sx + ax) * 4 + 0.5
-#                 cy += (sy + ay) * 4 + 0.5
             end
-            ax += p[0]
-            ay += p[1]
             io.print "#{(sx + ax) * 4 + 0.5},#{(sy + ay) * 4 + 0.5}"
             if vertex_index < segment[:vertices].size - 1
                 io.print ","
@@ -233,53 +251,61 @@ def dump_svg(io)
         cy = 0.0
         sx = segment[:offset][0]
         sy = segment[:offset][1]
-        ax = segment[:p0][0]
-        ay = segment[:p0][1]
         vertex_bytes = []
-        segment[:vertices].each.with_index do |p, vertex_index|
-            if vertex_index == 0
-                io.print "#{(sx + ax) * 4 + 0.5},#{(sy + ay) * 4 + 0.5},"
-            end
-            ax += p[0]
-            ay += p[1]
-            cx += (sx + ax) * 4 + 0.5
-            cy += (sy + ay) * 4 + 0.5
+        count = 0
+        segment[:vertices].each_with_prev_and_next_and_indices do |pr, p0, p1, vertex_index|
+#             nx = p1[1] - pr[1]
+#             ny = pr[0] - p1[0]
+#             tx = p0[0] - pr[0]
+#             ty = p0[1] - pr[1]
+#             if nx * tx + ny * ty < 0.00001
+                ax, ay = *p0
+                cx += sx + ax
+                cy += sy + ay
+                count += 1
+#             end
         end
-        cx /= segment[:vertices].size
-        cy /= segment[:vertices].size
-        io.puts "<text x='#{cx}' y='#{cy + 0.6}' text-anchor='middle' font-family='Arial' font-size='2' fill='#fff'>#{segment_index}</text>"
+        cx /= count
+        cy /= count
+        cx = cx * 4 + 0.5
+        cy = cy * 4 + 0.5
+        io.puts "<text x='#{cx}' y='#{cy + 0.3}' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='1.0' fill='#fff'>#{segment_index}</text>"
     end
     # render lines
     $segments.each.with_index do |segment, segment_index|
         sx = segment[:offset][0]
         sy = segment[:offset][1]
-        ax = segment[:p0][0]
-        ay = segment[:p0][1]
         vertex_bytes = []
-        segment[:vertices].each.with_index do |p, vertex_index|
-            io.puts "<rect x='#{(sx + ax) * 4 + 0.5 - 0.2}' y='#{(sy + ay) * 4 + 0.5 - 0.2}' width='0.4' height='0.4'  stroke='#fff' stroke-width='0.2' />"
-            lx = sx + ax + p[0] * 0.5
-            ly = sy + ay + p[1] * 0.5
-            nx = -p[1]
-            ny = p[0]
-            nl = (nx * nx + ny * ny) ** 0.5;
+        segment[:vertices].each_with_next_and_indices do |p0, p1, vertex_index|
+            x0 = p0[0] + sx
+            y0 = p0[1] + sy
+            x1 = p1[0] + sx
+            y1 = p1[1] + sy
+            
+            io.puts "<rect x='#{x0 * 4 + 0.5 - 0.2}' y='#{y0 * 4 + 0.5 - 0.2}' width='0.4' height='0.4'  stroke='#fff' stroke-width='0.2' />"
+            
+            # render edge index
+            lx = (x0 + x1) * 0.5
+            ly = (y0 + y1) * 0.5
+            nx = y0 - y1
+            ny = x1 - x0
+            nl = (nx * nx + ny * ny) ** 0.5
             nx /= nl
             ny /= nl
             lx -= nx * 0.2
             ly -= ny * 0.2
-            io.puts "<text x='#{lx * 4 + 0.5}' y='#{ly * 4 + 0.5 + 0.3}' text-anchor='middle' font-family='Arial' font-size='1' fill='#fff'>#{(vertex_index + segment[:vertices].size - 1) % segment[:vertices].size}</text>"
-            io.print "<line x1='#{(sx + ax) * 4 + 0.5}' y1='#{(sy + ay) * 4 + 0.5}' "
-            ax += p[0]
-            ay += p[1]
+            io.puts "<text x='#{lx * 4 + 0.5}' y='#{ly * 4 + 0.5 + 0.3}' text-anchor='middle' font-family='Arial' font-size='1' fill='#aaa'>#{(vertex_index + segment[:vertices].size) % segment[:vertices].size}</text>"
+
             color = '#fff'
             stroke_width = 0.2
-            if segment[:portals].include?((vertex_index + segment[:vertices].size - 1) % segment[:vertices].size)
+            if segment[:portals].include?(vertex_index)
                 color = '#2f6f91'
             end
             if segment[:doors].include?(vertex_index)
                 color = '#f00'
             end
-            io.puts "x2='#{(sx + ax) * 4 + 0.5}' y2='#{(sy + ay) * 4 + 0.5}' stroke='#{color}' stroke-width='#{stroke_width}' />"
+            io.print "<line x1='#{x0 * 4 + 0.5}' y1='#{y0 * 4 + 0.5}' "
+            io.puts "x2='#{x1 * 4 + 0.5}' y2='#{y1 * 4 + 0.5}' stroke='#{color}' stroke-width='#{stroke_width}' />"
         end
     end
     io.puts '</svg>'
@@ -301,6 +327,7 @@ segment(1, 7) do
     v 1, 0
     v 0, -4
     v -1, 0
+    v 0, 4
 end
 
 segment(0, 2) do
@@ -420,39 +447,14 @@ segment(15, 15) do
     v -2, -2
 end
 
-# segment(13, 18) do
-#     v 0, 2
-#     v 3, 0
-#     v 0, -2
-# end
-# 
-# segment(16, 18) do
-#     v 0, 2
-#     v 2, 0
-#     v 0, -2
-# end
-# 
-# segment(18, 18) do
-#     v 0, 2
-#     v 3, 0
-#     v 0, -2
-# end
-# 
-# segment(13, 20) do
-#     v 0, 1
-#     v 2, 2
-#     v 4, 0
-#     v 2, -2
-#     v 0, -1
-#     v -3, 0
-#     v -2, 0
-# end
-
-
 find_portals()
-dump()
+
+File::open('map.h', 'w') do |f|
+    dump(f)
+end
 
 File::open('level.svg', 'w') do |f|
     dump_svg(f)
 end
+
 system("inkscape -z -w 2048 -e level.png level.svg > /dev/null")

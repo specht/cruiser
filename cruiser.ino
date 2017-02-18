@@ -232,8 +232,10 @@ struct segment
     byte ceiling_height;
     byte x, y;
     byte vertex_and_portal_count;
+    byte door_count;
     const byte* vertices;
     const word* portals;
+    const word* doors;
 };
 
 struct sprite_polygon
