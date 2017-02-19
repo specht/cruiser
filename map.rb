@@ -271,7 +271,11 @@ def dump_svg(io)
         cy /= count
         cx = cx * 4 + 0.5
         cy = cy * 4 + 0.5
-        io.puts "<text x='#{cx}' y='#{cy + 0.3}' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='1.0' fill='#fff'>#{segment_index}</text>"
+        label = "#{segment_index}"
+        if segment[:floor_height] != 0 || segment[:ceiling_height] != 16
+            label += " (#{segment[:floor_height]} / #{segment[:ceiling_height]})"
+        end
+        io.puts "<text x='#{cx}' y='#{cy + 0.3}' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='1.0' fill='#fff'>#{label}</text>"
     end
     # render lines
     $segments.each.with_index do |segment, segment_index|
@@ -325,7 +329,6 @@ segment(0, 8) do
 end
 
 segment(1, 7) do
-    height 4, 12
     v 1, 0
     v 0, -4
     v -1, 0
@@ -333,6 +336,7 @@ segment(1, 7) do
 end
 
 segment(0, 2) do
+    height 0, 32
     v 1, 1
     v 1, 0
     v 8, -1
@@ -342,35 +346,35 @@ segment(0, 2) do
 end
 
 segment(10, 0) do
-    height 0, 8
+#     height 0, 29
     v 0, 2
     v 1, 0
     v 1, -2
 end
 
 segment(12, 0) do
-    height 2, 10
+#     height 0, 27
     v -1, 2
     v 2, 1
     v 1, -2
 end
 
 segment(14, 1) do
-    height 4, 12
+#     height 0, 24
     v -1, 2
     v 1, 1
     v 2, -1
 end
 
 segment(14, 4) do
-    height 6, 14
+#     height 0, 21
     v 1, 2
     v 2, -1
     v -1, -2
 end
 
 segment(15, 6) do
-    height 8, 16
+#     height 0, 19
     v 0, 1
     v 2, 0
     v 0, -2
@@ -450,6 +454,34 @@ segment(15, 15) do
     v 0, -1
     v -2, -2
 end
+
+# segment(13, 18) do
+#     v 0, 2
+#     v 3, 0
+#     v 0, -2
+# end
+# 
+# segment(18, 18) do
+#     v 0, 2
+#     v 3, 0
+#     v 0, -2
+# end
+# 
+# segment(13, 20) do
+#     v 2, 2
+#     v 4, 0
+#     v 2, -2
+#     v -3, 0
+#     v -2, 0
+#     v -3, 0
+# end
+# 
+# segment(16, 18) do
+#     height 0, 32
+#     v 0, 2
+#     v 2, 0
+#     v 0, -2
+# end
 
 segment(5, 10) do
     v -1, 1
