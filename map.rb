@@ -1,12 +1,14 @@
 #!/usr/bin/env ruby
 
 require 'json'
+require 'set'
 require 'yaml'
 
 $ax = 0
 $ay = 0
 $segments = []
 $doors = []
+$wall_normals = []
 
 class Array
     def each_with_next_and_indices(&block)
@@ -49,6 +51,7 @@ def segment(x0, y0, &block)
         :offset => [0, 0],
         :p => [x0, y0],
         :vertices => [[x0, y0]],
+        :wall_normals => [],
         :portals => {},
         :doors => {},
         :floor_height => 0,
@@ -93,6 +96,20 @@ def find_portals()
             x1 = p1[0] + segment[:offset][0]
             y1 = p1[1] + segment[:offset][1]
             tag = [[x0, y0, x1, y1].join(','), [x1, y1, x0, y0].join(',')].sort
+            n = [x0 - x1, y1 - y0]
+            ln = (n[0] * n[0] + n[1] * n[1]) ** 0.5
+            n.map! { |f| f.abs }
+            n.sort!
+            n.map! { |f| f.to_f / ln }
+            n.map! { |f| (f * 65535.0).to_i }
+            n = "#{n[0]} #{n[1]}"
+            unless $wall_normals.include?(n)
+                if $wall_normals.size >= 16
+                    raise 'No more than 16 unique wall normals allowed!'
+                end
+                $wall_normals << n
+            end
+            segment[:wall_normals] << $wall_normals.index(n)
             tags[tag] ||= []
             tags[tag] << {:segment_index => segment_index, :edge_index => vertex_index}
         end
@@ -129,10 +146,16 @@ def dump(io = STDOUT)
     vertex_bytes_for_segment = []
     portal_words_for_segment = []
     door_words_for_segment = []
+    total_vertex_count = 0
+    total_portal_count = 0
+    io.puts "const static uint16_t wall_normals[] PROGMEM = {#{$wall_normals.map { |x| x.split(' ').join(',') }.join(',')}};"
+    io.puts
     $segments.each.with_index do |segment, _|
         sx, sy = *segment[:offset]
         vertices = []
         vertex_bytes = []
+        total_vertex_count += segment[:vertices].size
+        total_portal_count += segment[:portals].size
         segment[:vertices].each do |p|
             ax, ay = *p
             if ax < 0 || ax > 15 || ay < 0 || ay > 15
@@ -198,6 +221,8 @@ def dump(io = STDOUT)
     io.puts
     io.puts "const static int DOOR_COUNT = #{$doors.size};"
     io.puts "long doors[DOOR_COUNT];"
+    puts "Total vertex count: #{total_vertex_count}"
+    puts "Total portal count: #{total_portal_count}"
 end
 
 def dump_svg(io)
@@ -346,41 +371,42 @@ segment(0, 2) do
 end
 
 segment(10, 0) do
-#     height 0, 29
+    height 16, 32
     v 0, 2
     v 1, 0
     v 1, -2
 end
 
 segment(12, 0) do
-#     height 0, 27
+    height 16, 32
     v -1, 2
     v 2, 1
     v 1, -2
 end
 
 segment(14, 1) do
-#     height 0, 24
+    height 16, 32
     v -1, 2
     v 1, 1
     v 2, -1
 end
 
 segment(14, 4) do
-#     height 0, 21
+    height 16, 32
     v 1, 2
     v 2, -1
     v -1, -2
 end
 
 segment(15, 6) do
-#     height 0, 19
+    height 16, 32
     v 0, 1
     v 2, 0
     v 0, -2
 end
 
 segment(15, 7) do
+    height 0, 48
     v -2, 1
     v -1, 1
     v 0, 1
@@ -408,36 +434,42 @@ segment(15, 11) do
 end
 
 segment(20, 11) do
+    height 32, 48
     v 2, 0
     v 0, -1
     v -2, 0
 end
 
 segment(22, 11) do
+    height 32, 48
     v 3, -1
     v -1, -1
     v -2, 1
 end
 
 segment(25, 10) do
+    height 32, 48
     v 1, -1
     v -1, -1
     v -1, 1
 end
 
 segment(26, 9) do
+    height 32, 48
     v 1, -3
     v -1, 0
     v -1, 2
 end
 
 segment(27, 6) do
+    height 32, 48
     v 0, -1
     v -1, 0
     v 0, 1
 end
 
 segment(27, 5) do
+    height 32, 48
     v 3, 0
     v 0, -3
     v -7, 0
@@ -511,6 +543,21 @@ segment(12, 18) do
     v -1, 0
 end
 
+segment(21, 18) do
+    height 0, 128
+    v 1, 0
+    v 0, -1
+    v -1, 0
+end
+
+segment(22, 14) do
+    height 112, 128
+    v 0, 3
+    v 0, 1
+    v 6, 0
+    v 0, -4
+end
+
 find_portals()
 
 File::open('map.h', 'w') do |f|
@@ -522,3 +569,4 @@ File::open('level.svg', 'w') do |f|
 end
 
 system("inkscape -z -w 2048 -e level.png level.svg > /dev/null")
+puts $wall_normals.to_a
