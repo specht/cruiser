@@ -258,7 +258,7 @@ struct polygon
     };
 };
 
-struct segment
+struct old_segment
 {
     byte floor_height;
     byte ceiling_height;
@@ -270,16 +270,16 @@ struct segment
     const word* doors;
 };
 
-struct new_segment
+struct segment
 {
     // total size: 8 bytes
-    byte floor_height   :  6;
-    byte ceiling_height :  6;
+    byte floor_height   :  5;
+    byte ceiling_height :  5;
     byte x              :  6;
     byte y              :  6;
     byte vertex_count   :  4;
-    byte portal_count   :  2;
-    byte door_count     :  2;
+    byte portal_count   :  3;
+    byte door_count     :  3;
     word vertices       : 10;
     word normals        : 10;
     byte portals        :  8;
@@ -712,6 +712,8 @@ void handle_controls()
 // - 0xff if no collision
 byte collision_detection(word* segment, vec3d* from, vec3d* to, int32_t bump_distance)
 {
+    return 0xff;
+    /*
     byte collided = 0xff;
     vec3d dir(*to - *from);
 
@@ -811,6 +813,7 @@ byte collision_detection(word* segment, vec3d* from, vec3d* to, int32_t bump_dis
         }
     }
     return collided;
+    */
 }
 
 void move_player()
@@ -1036,6 +1039,12 @@ void transform_world_space_to_view_space(vec3d* v, byte count = 1)
     }
 }
 
+void flash_memcpy(void* destination, void* source, size_t size)
+{
+    for (size_t i = 0; i < size; ++i)
+        *((uint8_t*)destination++) = pgm_read_byte(source++);
+}
+
 void render_segment(byte segment_index, byte frustum_count, byte frustum_offset, byte from_segment = 255)
 {
     #ifdef ENABLE_MAP
@@ -1050,22 +1059,24 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
     #ifdef DEBUG
         segments_drawn++;
     #endif
+    segment current_segment;
+    flash_memcpy(&current_segment, &segments[segment_index], sizeof(segment));
     // iterate through every pair of adjacent vertices:
     // - construct polygon
     // - if it's a portal to the segment we're coming from: skip it
     // - clip against frustum (skip if invisible)
     // - if it's a wall: render outline
     // - if it's a portal: recursively render adjacent segment with updated frustum
-    byte num_points = pgm_read_byte(&segments[segment_index].vertex_and_portal_count) >> 4;
-    byte *vertices = (byte*)pgm_read_ptr(&segments[segment_index].vertices);
-    word *portals = (word*)pgm_read_ptr(&segments[segment_index].portals);
-    byte num_portals = pgm_read_byte(&segments[segment_index].vertex_and_portal_count) & 0xf;
+    byte num_points = current_segment.vertex_count;
+    byte vertices = current_segment.vertices;
+    word portals = current_segment.portals;
+    byte num_portals = current_segment.portal_count;
     byte next_portal_index = 0;
     word next_portal_point = pgm_read_word(&portals[next_portal_index]);
     word adjacent_segment;
     int x0, z0, x1, z1;
     int x1_z1_from_point = -1;
-    byte floor_height = pgm_read_byte(&segments[segment_index].floor_height);
+    byte floor_height = current_segment.floor_height;
     byte ceiling_height = pgm_read_byte(&segments[segment_index].ceiling_height);
     // wall has the geometry for the current wall of the current segment
     polygon wall;
@@ -1078,10 +1089,12 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
         polygon* portal = &wall;
         
         adjacent_segment = 0xffff;
+        segment adjancent_segment_;
         // test if it's a portal
         if (next_portal_index < num_portals && i == next_portal_point >> 12)
         {
             adjacent_segment = next_portal_point & 0xfff;
+            flash_memcpy(&adjacent_segment, &segments[adjacent_segment], sizeof(segment));
             next_portal_index++;
             next_portal_point = pgm_read_word(&portals[next_portal_index]);
             // early face culling: skip the portal if it's leading to a segment we have already touched in this frame
@@ -1164,7 +1177,7 @@ void render_segment(byte segment_index, byte frustum_count, byte frustum_offset,
             // - the smaller polygon (portal_polygon)
             //   - with only top and bottom lines, if required (different from bigger polygon)
             //   - defining the portal and thus the frustum used for the adjacent segment
-            adjacent_floor_height = pgm_read_byte(&segments[adjacent_segment].floor_height);
+            adjacent_floor_height = adjacent_segment_.floor_height;
             adjacent_ceiling_height = pgm_read_byte(&segments[adjacent_segment].ceiling_height);
             if (adjacent_floor_height != floor_height)
                 wall.draw_edges |= 1;

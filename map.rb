@@ -142,21 +142,45 @@ def find_portals()
 #     STDERR.puts $segments.to_yaml
 end
 
+def array_index_of_array(haystack, needle)
+#     0 1 2 3 4 5 6 7  haystack
+#     0 1 2            needle
+#       0 1 2          needle
+#               0 1 2  needle
+    return nil if haystack.size < needle.size
+    (0..(haystack.size - needle.size)).each do |i|
+        match = true
+        (0...needle.size).each do |k|
+            if needle[k] != haystack[i + k]
+                match = false
+                break
+            end
+        end
+        return i if match
+    end
+    return nil
+end
+
 def dump(io = STDOUT)
-    vertex_bytes_for_segment = []
-    portal_words_for_segment = []
-    door_words_for_segment = []
+    all_vertex_bytes = []
+    all_wall_normal_bytes = []
+    all_portal_words = []
+    all_door_words = []
+    vertex_index_for_segment = {}
+    wall_normal_index_for_segment = {}
+    portal_index_for_segment = {}
+    door_index_for_segment = {}
     total_vertex_count = 0
     total_portal_count = 0
-    io.puts "const static uint16_t wall_normals[] PROGMEM = {#{$wall_normals.map { |x| x.split(' ').join(',') }.join(',')}};"
-    io.puts
     $segments.each.with_index do |segment, _|
         sx, sy = *segment[:offset]
         vertices = []
+
         vertex_bytes = []
+        wall_normal_bytes = []
         total_vertex_count += segment[:vertices].size
         total_portal_count += segment[:portals].size
-        segment[:vertices].each do |p|
+        segment[:vertices].each_with_index do |p, vertex_index|
             ax, ay = *p
             if ax < 0 || ax > 15 || ay < 0 || ay > 15
                 raise 'Coordinates out of range.'
@@ -168,59 +192,101 @@ def dump(io = STDOUT)
             # - test whether it's a closed path
             vertices << [ax, ay]
             vertex_bytes << sprintf('0x%x', (ax << 4 | ay))
+            wall_normal_bytes << segment[:wall_normals][vertex_index]
         end
-#         segment[:vertices].each.with_index do |p, _|
-#             p0 = vertices[_]
-#             p1 = vertices[(_ + 1) % segment[:vertices].size]
-#             dx = p0[1] - p1[1]
-#             dy = p1[0] - p0[0]
-#             n = [dx, dy]
-#             len = 1.0 / ((n[0] * n[0] + n[1] * n[1]) ** 0.5)
-#             tag = [dx.abs, dy.abs].sort
-#         end
+        # combine two wall normal bytes into one
+        temp = wall_normal_bytes.dup
+        wall_normal_bytes = []
+        combined = 0
+        (0...temp.size).each do |i|
+            combined <<= 4
+            combined |= temp[i]
+            if i % 2 == 0
+                wall_normal_bytes << combined
+                combined = 0
+            end
+        end
+        wall_normal_bytes << combined if temp.size % 2 == 1
+
         portal_words = []
         segment[:portals].keys.sort.each do |vertex_index|
             portal_words << sprintf('0x%x', ((vertex_index << 12) | (segment[:portals][vertex_index] & 0xfff)))
         end
+
         door_words = []
         segment[:doors].keys.sort.each do |vertex_index|
             door_words << sprintf('0x%x', ((vertex_index << 12) | (segment[:doors][vertex_index] & 0xfff)))
         end
-        vertex_bytes_for_segment << vertex_bytes.join(',')
-        portal_words_for_segment << portal_words.join(',')
-        door_words_for_segment << door_words.join(',')
-    end
-    $segments.each.with_index do |segment, _|
-        io.puts "const static byte v_#{_}[] PROGMEM = {#{vertex_bytes_for_segment[_]}};"
-        io.puts "const static word p_#{_}[] PROGMEM = {#{portal_words_for_segment[_]}};"
-        unless segment[:doors].empty?
-            io.puts "const static word d_#{_}[] PROGMEM = {#{door_words_for_segment[_]}};"
+        # here's a trick: instead of just appending the numbers,
+        # look whether this sequence of bytes is already present
+        # anywhere in the previous stream of numbers
+        # this gives us free geometry compression when we have
+        # multiple segments with the same geometry
+        if array_index_of_array(all_vertex_bytes, vertex_bytes)
+            puts "Saved #{vertex_bytes.size} vertex bytes, yeah!"
+        else
+            all_vertex_bytes += vertex_bytes
         end
+        vertex_index_for_segment[_] = array_index_of_array(all_vertex_bytes, vertex_bytes)
+        
+        if array_index_of_array(all_wall_normal_bytes, wall_normal_bytes)
+            puts "Saved #{wall_normal_bytes.size} wall normal bytes, yeah!"
+        else
+            all_wall_normal_bytes += wall_normal_bytes
+        end
+        wall_normal_index_for_segment[_] = array_index_of_array(all_wall_normal_bytes, wall_normal_bytes)
+        
+        if array_index_of_array(all_portal_words, portal_words)
+            puts "Saved some portal bytes, yeah!"
+        else
+            all_portal_words += portal_words
+        end
+        portal_index_for_segment[_] = array_index_of_array(all_portal_words, portal_words)
+
+        unless door_words.empty?
+            if array_index_of_array(all_door_words, door_words)
+                puts "Saved some door bytes, yeah!"
+            else
+                all_door_words += door_words
+            end
+            door_index_for_segment[_] = array_index_of_array(all_door_words, door_words)
+        end
+        
     end
+    io.puts "const static uint16_t wall_normal_templates[] PROGMEM = {"
+    io.puts $wall_normals.map { |x| x.split(' ').map { |x| sprintf('%5d', x.to_i) }.join(', ') }.join(', ')
+    io.puts "};"
+    io.puts
+    io.puts "const static uint8_t vertices[] PROGMEM = {#{all_vertex_bytes.join(', ')}};"
+    io.puts
+    io.puts "const static uint8_t wall_normals[] PROGMEM = {#{all_wall_normal_bytes.join(', ')}};"
+    io.puts
+    io.puts "const static uint16_t portals[] PROGMEM = {#{all_portal_words.join(', ')}};"
+    io.puts
+    io.puts "const static uint16_t doors[] PROGMEM = {#{all_door_words.join(', ')}};"
     io.puts
     io.puts "const static segment segments[] PROGMEM = {"
     $segments.each.with_index do |segment, _|
-        io.print "  {#{segment[:floor_height]},#{segment[:ceiling_height]},#{segment[:offset].join(',')},"
-        io.print "#{sprintf('0x%x', (segment[:vertices].size << 4) | segment[:portals].size)},"
-        io.print "#{sprintf('0x%x', segment[:doors].size)},"
-        io.print "v_#{_},"
-        io.print "p_#{_},"
-        if segment[:doors].empty?
-            io.print "0"
-        else
-            io.print "d_#{_}"
-        end
+        io.print "    {#{sprintf('%2d', segment[:floor_height])}, "
+        io.print "#{sprintf('%2d', segment[:ceiling_height])}, "
+        io.print "#{segment[:offset].map { |x| sprintf('%3d', x)}.join(', ')}, "
+        io.print "#{sprintf('%2d', segment[:vertices].size)}, "
+        io.print "#{segment[:portals].size}, "
+        io.print "#{segment[:doors].size}, "
+        io.print "#{sprintf('%4d', vertex_index_for_segment[_])}, "
+        io.print "#{sprintf('%4d', wall_normal_index_for_segment[_])}, "
+        io.print "#{sprintf('%3d', portal_index_for_segment[_])}, "
+        io.print "#{sprintf('%2d', door_index_for_segment[_] || 0)}"
         io.puts "}#{_ < $segments.size - 1 ? ',' : ''}"
     end
     io.puts "};"
     io.puts
-    io.puts "const static int SEGMENTS_TOUCHED_SIZE = #{(($segments.size - 1) >> 3) + 1};"
-    io.puts "byte segments_touched[SEGMENTS_TOUCHED_SIZE];"
+    io.puts "#define SEGMENTS_TOUCHED_SIZE #{(($segments.size - 1) >> 3) + 1}"
+    io.puts "uint8_t segments_touched[SEGMENTS_TOUCHED_SIZE];"
+    io.puts "uint8_t segments_seen[SEGMENTS_TOUCHED_SIZE];"
     io.puts
-    io.puts "byte segments_seen[SEGMENTS_TOUCHED_SIZE];"
-    io.puts
-    io.puts "const static int DOOR_COUNT = #{$doors.size};"
-    io.puts "long doors[DOOR_COUNT];"
+    io.puts "#define DOOR_COUNT #{$doors.size}"
+    io.puts "uint32_t door_state[DOOR_COUNT];"
     puts "Total vertex count: #{total_vertex_count}"
     puts "Total portal count: #{total_portal_count}"
 end
@@ -361,7 +427,7 @@ segment(1, 7) do
 end
 
 segment(0, 2) do
-    height 0, 32
+    height 0, 4
     v 1, 1
     v 1, 0
     v 8, -1
@@ -371,42 +437,42 @@ segment(0, 2) do
 end
 
 segment(10, 0) do
-    height 16, 32
+    height 2, 4
     v 0, 2
     v 1, 0
     v 1, -2
 end
 
 segment(12, 0) do
-    height 16, 32
+    height 2, 4
     v -1, 2
     v 2, 1
     v 1, -2
 end
 
 segment(14, 1) do
-    height 16, 32
+    height 2, 4
     v -1, 2
     v 1, 1
     v 2, -1
 end
 
 segment(14, 4) do
-    height 16, 32
+    height 2, 4
     v 1, 2
     v 2, -1
     v -1, -2
 end
 
 segment(15, 6) do
-    height 16, 32
+    height 2, 4
     v 0, 1
     v 2, 0
     v 0, -2
 end
 
 segment(15, 7) do
-    height 0, 48
+    height 0, 6
     v -2, 1
     v -1, 1
     v 0, 1
@@ -434,42 +500,42 @@ segment(15, 11) do
 end
 
 segment(20, 11) do
-    height 32, 48
+    height 4, 6
     v 2, 0
     v 0, -1
     v -2, 0
 end
 
 segment(22, 11) do
-    height 32, 48
+    height 4, 6
     v 3, -1
     v -1, -1
     v -2, 1
 end
 
 segment(25, 10) do
-    height 32, 48
+    height 4, 6
     v 1, -1
     v -1, -1
     v -1, 1
 end
 
 segment(26, 9) do
-    height 32, 48
+    height 4, 6
     v 1, -3
     v -1, 0
     v -1, 2
 end
 
 segment(27, 6) do
-    height 32, 48
+    height 4, 6
     v 0, -1
     v -1, 0
     v 0, 1
 end
 
 segment(27, 5) do
-    height 32, 48
+    height 4, 6
     v 3, 0
     v 0, -3
     v -7, 0
@@ -486,34 +552,6 @@ segment(15, 15) do
     v 0, -1
     v -2, -2
 end
-
-# segment(13, 18) do
-#     v 0, 2
-#     v 3, 0
-#     v 0, -2
-# end
-# 
-# segment(18, 18) do
-#     v 0, 2
-#     v 3, 0
-#     v 0, -2
-# end
-# 
-# segment(13, 20) do
-#     v 2, 2
-#     v 4, 0
-#     v 2, -2
-#     v -3, 0
-#     v -2, 0
-#     v -3, 0
-# end
-# 
-# segment(16, 18) do
-#     height 0, 32
-#     v 0, 2
-#     v 2, 0
-#     v 0, -2
-# end
 
 segment(5, 10) do
     v -1, 1
@@ -544,14 +582,14 @@ segment(12, 18) do
 end
 
 segment(21, 18) do
-    height 0, 128
+    height 0, 16
     v 1, 0
     v 0, -1
     v -1, 0
 end
 
 segment(22, 14) do
-    height 112, 128
+    height 14, 16
     v 0, 3
     v 0, 1
     v 6, 0
@@ -569,4 +607,3 @@ File::open('level.svg', 'w') do |f|
 end
 
 system("inkscape -z -w 2048 -e level.png level.svg > /dev/null")
-puts $wall_normals.to_a
