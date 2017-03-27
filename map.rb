@@ -54,8 +54,8 @@ def segment(x0, y0, &block)
         :wall_normals => [],
         :portals => {},
         :doors => {},
-        :floor_height => 0,
-        :ceiling_height => 16,
+        :floor_height => 16,
+        :ceiling_height => 20,
         :line => Kernel.caller_locations(1, 1).first.to_s.split(':')[1]
     }
     $ax = 0
@@ -165,7 +165,7 @@ def dump(io = STDOUT)
     all_vertex_bytes = []
     all_wall_normal_bytes = []
     all_portal_words = []
-    all_door_words = []
+    all_door_bytes = []
     vertex_index_for_segment = {}
     wall_normal_index_for_segment = {}
     portal_index_for_segment = {}
@@ -213,9 +213,9 @@ def dump(io = STDOUT)
             portal_words << sprintf('0x%x', ((vertex_index << 12) | (segment[:portals][vertex_index] & 0xfff)))
         end
 
-        door_words = []
+        door_bytes = []
         segment[:doors].keys.sort.each do |vertex_index|
-            door_words << sprintf('0x%x', ((vertex_index << 12) | (segment[:doors][vertex_index] & 0xfff)))
+            door_bytes << sprintf('0x%x', ((vertex_index << 4) | (segment[:doors][vertex_index] & 0xf)))
         end
         # here's a trick: instead of just appending the numbers,
         # look whether this sequence of bytes is already present
@@ -243,13 +243,13 @@ def dump(io = STDOUT)
         end
         portal_index_for_segment[_] = array_index_of_array(all_portal_words, portal_words)
 
-        unless door_words.empty?
-            if array_index_of_array(all_door_words, door_words)
+        unless door_bytes.empty?
+            if array_index_of_array(all_door_bytes, door_bytes)
                 puts "Saved some door bytes, yeah!"
             else
-                all_door_words += door_words
+                all_door_bytes += door_bytes
             end
-            door_index_for_segment[_] = array_index_of_array(all_door_words, door_words)
+            door_index_for_segment[_] = array_index_of_array(all_door_bytes, door_bytes)
         end
         
     end
@@ -263,9 +263,10 @@ def dump(io = STDOUT)
     io.puts
     io.puts "const static uint16_t portals[] PROGMEM = {#{all_portal_words.join(', ')}};"
     io.puts
-    io.puts "const static uint16_t doors[] PROGMEM = {#{all_door_words.join(', ')}};"
+    io.puts "const static uint8_t doors[] PROGMEM = {#{all_door_bytes.join(', ')}};"
     io.puts
     io.puts "const static segment segments[] PROGMEM = {"
+    io.puts '//   FH  CH    X    Y  VC PC DC     V     N    P   D'
     $segments.each.with_index do |segment, _|
         io.print "    {#{sprintf('%2d', segment[:floor_height])}, "
         io.print "#{sprintf('%2d', segment[:ceiling_height])}, "
@@ -286,7 +287,7 @@ def dump(io = STDOUT)
     io.puts "uint8_t segments_seen[SEGMENTS_TOUCHED_SIZE];"
     io.puts
     io.puts "#define DOOR_COUNT #{$doors.size}"
-    io.puts "uint32_t door_state[DOOR_COUNT];"
+    io.puts "int32_t door_state[DOOR_COUNT];"
     puts "Total vertex count: #{total_vertex_count}"
     puts "Total portal count: #{total_portal_count}"
 end
@@ -409,17 +410,22 @@ def dump_svg(io)
 end
 
 segment(0, 8) do
+#     height 15, 20
     v 0, 2
     v 4, 0
-    door 0, -1
+    v 0, -1
     v 0, -1
     v -1, -1
     v -1, 0
-    v -1, 0
+    
+    door -1, 0
+#     v -1, 0
+    
     v -1, 1
 end
 
 segment(1, 7) do
+#     height 12, 20
     v 1, 0
     v 0, -4
     v -1, 0
@@ -427,7 +433,7 @@ segment(1, 7) do
 end
 
 segment(0, 2) do
-    height 0, 4
+#     height 0, 4
     v 1, 1
     v 1, 0
     v 8, -1
@@ -437,42 +443,42 @@ segment(0, 2) do
 end
 
 segment(10, 0) do
-    height 2, 4
+#     height 2, 4
     v 0, 2
     v 1, 0
     v 1, -2
 end
 
 segment(12, 0) do
-    height 2, 4
+#     height 2, 4
     v -1, 2
     v 2, 1
     v 1, -2
 end
 
 segment(14, 1) do
-    height 2, 4
+#     height 2, 4
     v -1, 2
     v 1, 1
     v 2, -1
 end
 
 segment(14, 4) do
-    height 2, 4
+#     height 2, 4
     v 1, 2
     v 2, -1
     v -1, -2
 end
 
 segment(15, 6) do
-    height 2, 4
+#     height 2, 4
     v 0, 1
     v 2, 0
     v 0, -2
 end
 
 segment(15, 7) do
-    height 0, 6
+#     height 12, 24
     v -2, 1
     v -1, 1
     v 0, 1
@@ -500,42 +506,42 @@ segment(15, 11) do
 end
 
 segment(20, 11) do
-    height 4, 6
+#     height 4, 6
     v 2, 0
     v 0, -1
     v -2, 0
 end
 
 segment(22, 11) do
-    height 4, 6
+#     height 4, 6
     v 3, -1
     v -1, -1
     v -2, 1
 end
 
 segment(25, 10) do
-    height 4, 6
+#     height 4, 6
     v 1, -1
     v -1, -1
     v -1, 1
 end
 
 segment(26, 9) do
-    height 4, 6
+#     height 4, 6
     v 1, -3
     v -1, 0
     v -1, 2
 end
 
 segment(27, 6) do
-    height 4, 6
+#     height 4, 6
     v 0, -1
     v -1, 0
     v 0, 1
 end
 
 segment(27, 5) do
-    height 4, 6
+#     height 4, 6
     v 3, 0
     v 0, -3
     v -7, 0
@@ -549,7 +555,7 @@ segment(15, 15) do
     v 3, 0
     v 2, 0
     v 3, 0
-    v 0, -1
+    door 0, -1
     v -2, -2
 end
 
@@ -582,14 +588,14 @@ segment(12, 18) do
 end
 
 segment(21, 18) do
-    height 0, 16
+#     height 0, 16
     v 1, 0
     v 0, -1
     v -1, 0
 end
 
 segment(22, 14) do
-    height 14, 16
+    height 8, 20
     v 0, 3
     v 0, 1
     v 6, 0

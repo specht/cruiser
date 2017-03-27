@@ -1,5 +1,5 @@
 BOARD_TAG    = uno
-ARDUINO_PORT = /dev/ttyACM0 # Change to your own tty interface
+ARDUINO_PORT = /dev/ttyUSB0 # Change to your own tty interface
 
 USER_LIB_PATH += /home/michael/Arduino/libraries/
 ARDUINO_LIBS = Gamebuino SPI
