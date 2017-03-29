@@ -10,6 +10,7 @@
 #define SCREEN_SCALE 8
 #define LINE_COORDINATE_TYPE int
 #define LOG_ALREADY_DEFINED
+#define PORT_ENABLED
 
 #define byte uint8_t
 #define word uint16_t
@@ -31,6 +32,7 @@
 #define BTN_RIGHT 7
 
 unsigned long micros();
+unsigned long millis();
 class Buttons {
 public:
     Buttons();
@@ -75,5 +77,6 @@ byte pgm_read_byte(const byte* const addr);
 word pgm_read_word(const word* const addr);
 void* pgm_read_ptr(const byte* const* addr);
 void* pgm_read_ptr(const word* const* addr);
+void* memcpy_P(void* dst, const void* src, size_t size);
 
 void LOG(const char* s, ...);

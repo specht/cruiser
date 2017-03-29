@@ -300,7 +300,9 @@ def dump(io = STDOUT)
     io.puts
     io.puts "#define SEGMENTS_TOUCHED_SIZE #{(($segments.size - 1) >> 3) + 1}"
     io.puts "uint8_t segments_touched[SEGMENTS_TOUCHED_SIZE];"
-    io.puts "uint8_t segments_seen[SEGMENTS_TOUCHED_SIZE];"
+    io.puts "#ifdef ENABLE_MAP"
+    io.puts "    uint8_t segments_seen[SEGMENTS_TOUCHED_SIZE];"
+    io.puts "#endif"
     io.puts
     io.puts "#define DOOR_COUNT #{$doors.size}"
     io.puts "int32_t door_state[DOOR_COUNT];"

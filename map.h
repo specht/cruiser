@@ -39,7 +39,9 @@ const static segment segments[] PROGMEM = {
 
 #define SEGMENTS_TOUCHED_SIZE 4
 uint8_t segments_touched[SEGMENTS_TOUCHED_SIZE];
-uint8_t segments_seen[SEGMENTS_TOUCHED_SIZE];
+#ifdef ENABLE_MAP
+    uint8_t segments_seen[SEGMENTS_TOUCHED_SIZE];
+#endif
 
 #define DOOR_COUNT 2
 int32_t door_state[DOOR_COUNT];

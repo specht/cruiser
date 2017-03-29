@@ -8,6 +8,11 @@ unsigned long micros()
     return clock();
 }
 
+unsigned long millis()
+{
+    return clock() / 1000;
+}
+
 Buttons::Buttons()
 {
     for (int i = 0; i < 256; i++)
@@ -147,6 +152,11 @@ byte pgm_read_byte(const byte* const addr)
 word pgm_read_word(const word* const addr)
 {
     return *addr;
+}
+
+void* memcpy_P(void* dst, const void* src, size_t size)
+{
+    return memcpy(dst, src, size);
 }
 
 void* pgm_read_ptr(const byte* const* addr)
