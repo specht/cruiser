@@ -28,6 +28,7 @@ class Array
 end
 
 def v(dx, dy)
+    raise 'Too many vertices' if $segments.last[:vertices].size >= 8
     $segments.last[:p][0] += dx
     $segments.last[:p][1] += dy
     $segments.last[:vertices] << [$segments.last[:p][0], $segments.last[:p][1]]
@@ -39,6 +40,7 @@ def height(floor, ceiling)
 end
 
 def door(dx, dy)
+    raise "Too many vertices" if $segments.last[:vertices].size >= 8
     $segments.last[:doors][$segments.last[:vertices].size - 1] = $doors.size
     $doors << {:segment_index => $segments.size - 1, :vertex_index => $segments.last[:vertices].size}
     $segments.last[:p][0] += dx
@@ -101,7 +103,7 @@ def find_portals()
             n.map! { |f| f.abs }
             n.sort!
             n.map! { |f| f.to_f / ln }
-            n.map! { |f| (f * 65535.0).to_i }
+            n.map! { |f| (f * 255.0).to_i }
             n = "#{n[0]} #{n[1]}"
             unless $wall_normals.include?(n)
                 if $wall_normals.size >= 16
@@ -164,7 +166,7 @@ end
 def dump(io = STDOUT)
     all_vertex_bytes = []
     all_wall_normal_bytes = []
-    all_portal_words = []
+    all_portal_bytes = []
     all_door_bytes = []
     vertex_index_for_segment = {}
     wall_normal_index_for_segment = {}
@@ -173,6 +175,7 @@ def dump(io = STDOUT)
     total_vertex_count = 0
     total_portal_count = 0
     $segments.each.with_index do |segment, _|
+        puts "Segment ##{_}"
         sx, sy = *segment[:offset]
         vertices = []
 
@@ -188,7 +191,7 @@ def dump(io = STDOUT)
             # TODO: 
             # - test if segment is convex
             # - test if vertices are defined counter-clockwise
-            # - test if no more than 16 vertices
+            # - test if no more than 8 vertices
             # - test whether it's a closed path
             vertices << [ax, ay]
             vertex_bytes << sprintf('0x%x', (ax << 4 | ay))
@@ -208,9 +211,18 @@ def dump(io = STDOUT)
         end
         wall_normal_bytes << combined if temp.size % 2 == 1
 
-        portal_words = []
+        portal_bytes = []
         segment[:portals].keys.sort.each do |vertex_index|
-            portal_words << sprintf('0x%x', ((vertex_index << 12) | (segment[:portals][vertex_index] & 0xfff)))
+            diff = segment[:portals][vertex_index] - _
+            if diff >= -8 && diff <= 8
+                byte = (vertex_index << 5) | ((diff < 0) ? 8 : 0) | ((diff.abs - 1) & 0x7)    
+                portal_bytes << sprintf('0x%x', byte) 
+            else
+                byte = (vertex_index << 5) | 0x10
+                portal_bytes << sprintf('0x%x', byte) 
+                byte = segment[:portals][vertex_index]
+                portal_bytes << sprintf('0x%x', byte) 
+            end
         end
 
         door_bytes = []
@@ -222,6 +234,7 @@ def dump(io = STDOUT)
         # anywhere in the previous stream of numbers
         # this gives us free geometry compression when we have
         # multiple segments with the same geometry
+        puts "Vertex bytes: #{vertex_bytes.join(', ')}"
         if array_index_of_array(all_vertex_bytes, vertex_bytes)
             puts "Saved #{vertex_bytes.size} vertex bytes, yeah!"
         else
@@ -229,6 +242,7 @@ def dump(io = STDOUT)
         end
         vertex_index_for_segment[_] = array_index_of_array(all_vertex_bytes, vertex_bytes)
         
+        puts "Normal bytes: #{wall_normal_bytes.join(', ')}"
         if array_index_of_array(all_wall_normal_bytes, wall_normal_bytes)
             puts "Saved #{wall_normal_bytes.size} wall normal bytes, yeah!"
         else
@@ -236,13 +250,15 @@ def dump(io = STDOUT)
         end
         wall_normal_index_for_segment[_] = array_index_of_array(all_wall_normal_bytes, wall_normal_bytes)
         
-        if array_index_of_array(all_portal_words, portal_words)
-            puts "Saved some portal bytes, yeah!"
+        puts "Portal bytes: #{portal_bytes.join(', ')}"
+        if array_index_of_array(all_portal_bytes, portal_bytes)
+            puts "Saved #{portal_bytes.size} portal bytes (8 bit), yeah!"
         else
-            all_portal_words += portal_words
+            all_portal_bytes += portal_bytes
         end
-        portal_index_for_segment[_] = array_index_of_array(all_portal_words, portal_words)
+        portal_index_for_segment[_] = array_index_of_array(all_portal_bytes, portal_bytes)
 
+        puts "Door bytes: #{door_bytes.join(', ')}"
         unless door_bytes.empty?
             if array_index_of_array(all_door_bytes, door_bytes)
                 puts "Saved some door bytes, yeah!"
@@ -253,15 +269,15 @@ def dump(io = STDOUT)
         end
         
     end
-    io.puts "const static uint16_t wall_normal_templates[] PROGMEM = {"
-    io.puts $wall_normals.map { |x| x.split(' ').map { |x| sprintf('%5d', x.to_i) }.join(', ') }.join(', ')
+    io.print "const static uint8_t wall_normal_templates[] PROGMEM = {"
+    io.print $wall_normals.map { |x| x.split(' ').map { |x| sprintf('0x%02x', x.to_i) }.join(', ') }.join(', ')
     io.puts "};"
     io.puts
     io.puts "const static uint8_t vertices[] PROGMEM = {#{all_vertex_bytes.join(', ')}};"
     io.puts
     io.puts "const static uint8_t wall_normals[] PROGMEM = {#{all_wall_normal_bytes.join(', ')}};"
     io.puts
-    io.puts "const static uint16_t portals[] PROGMEM = {#{all_portal_words.join(', ')}};"
+    io.puts "const static uint8_t portals[] PROGMEM = {#{all_portal_bytes.join(', ')}};"
     io.puts
     io.puts "const static uint8_t doors[] PROGMEM = {#{all_door_bytes.join(', ')}};"
     io.puts
@@ -421,7 +437,7 @@ segment(0, 8) do
     door -1, 0
 #     v -1, 0
     
-    v -1, 1
+#     v -1, 1
 end
 
 segment(1, 7) do
@@ -484,11 +500,20 @@ segment(15, 7) do
     v 0, 1
     v 1, 1
     v 2, 0
+    v 2, -4
+#     v 1, 0
+#     v 0, -1
+#     v 0, -2
+#     v -3, -1
+end
+
+segment(17, 7) do
+    v -2, 4
     v 4, 0
     v 1, 0
     v 0, -1
-    v 0, -2
-    v -3, -1
+    v -1, -2
+    v -2, -1
 end
 
 segment(4, 9) do
@@ -613,3 +638,31 @@ File::open('level.svg', 'w') do |f|
 end
 
 system("inkscape -z -w 2048 -e level.png level.svg > /dev/null")
+
+# links = {}
+# 
+# $segments.each_with_index do |segment, a|
+#     segment[:portals].each_pair do |v, b|
+#         if a < b
+#             diff = b - a
+#             links[a] ||= Set.new()
+#             links[a] << b
+#             puts "#{a} #{b} #{diff}"
+#         end
+#     end
+# end
+# 
+# (0..$segments.size).each do |a|
+#     (0..$segments.size).each do |b|
+#         if links[a] && links[a].include?(b)
+#             print sprintf('%-2d ', b - a)
+#         else
+#             if a < b
+#                 print '.  '
+#             else
+#                 print '   '
+#             end
+#         end
+#     end
+#     puts
+# end

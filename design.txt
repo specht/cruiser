@@ -1,0 +1,14 @@
+256 segments max
+8 vertices per segment (3 bits), index diff between adjacent segments must be -16 .. 16 (excluding 0, 5 bits)
+segments must be convex
+adjacent segments are either +-8 or they have a special bit set indicating that we need a 8 bit segment index
+
+7 6 5 4 3 2 1 0
+          -----
+          | diff - 1 (1..8) if flag == 0
+        -
+        | sign flag
+      -
+      | flag (0 if diff from -8 to 8, 1 if adjacent segment byte following)
+-----
+  | vertex index
