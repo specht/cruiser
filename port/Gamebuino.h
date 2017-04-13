@@ -48,6 +48,7 @@ public:
     void print(const char* s = "");
     void println(const char* s = "");
     void print(long l);
+    void print(long unsigned int l);
     void print(int i);
     void print(float f);
     void print(double d);

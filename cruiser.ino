@@ -8,19 +8,22 @@ const int32_t PI1 = 205887;
 #define MAX_JOB_COUNT 3
 #define MAX_SHARED_FRUSTUM_PLANES 22
 #define MAX_RENDER_ADJACENT_SEGMENTS 8
-// #define DEBUG
+#define DEBUG
 #define MONITOR_RAM
-// #define SHOW_FRAME_TIME
+#define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
-#define SHOW_TITLE_SCREEN
+// #define SHOW_TITLE_SCREEN
 // #define ENABLE_STRAFE
 //#define ENABLE_MAP
 #define ENABLE_SHOOTING
 #define MAX_SHOTS 4
 
-#define SUB_PIXEL_ACCURACY
+#define PREMULTIPLIED_WIDTH 1328
+#define PREMULTIPLIED_HEIGHT 752
 
-#define FRUSTUM_PLANE_CALCULATION_PREMULTIPLY
+#ifndef PORT_ENABLED
+#define SUB_PIXEL_ACCURACY
+#endif
 
 #define FIXED_POINT_SCALE 4
 
@@ -52,16 +55,49 @@ uint32_t micros_per_frame = 0;
 #ifdef DEBUG
 int faces_touched = 0;
 int faces_drawn = 0;
-int max_polygon_vertices = 0;
 int max_frustum_planes = 0;
+int max_polygon_vertices = 0;
 int segments_drawn = 0;
+int max_clipped_vertices = 0;
 #endif
 
 int32_t lsin(int32_t a);
-int32_t lcos(int32_t a);
+// save 32 bytes of code by not defining a separate cosine function... heh!
+#define lcos(x) lsin(x + 102943)
 int32_t lsqrt(int32_t a);
 
 byte SCREEN_RESOLUTION[2] = {LCDWIDTH, LCDHEIGHT};
+
+struct vec3d_16
+{
+    union {
+        // minimize code size by looping through coordinates
+        int16_t v[3];
+        struct {
+            int16_t x, y, z;
+        };
+    };
+    
+    vec3d_16()
+        : x(0), y(0), z(0)
+    {}
+    
+    vec3d_16(int16_t _x, int16_t _y, int16_t _z)
+        : x(_x), y(_y), z(_z)
+    {}
+    
+    void maximize_length()
+    {
+        byte max_index = 0;
+        for (byte k = 1; k < 3; k++)
+            if (abs(v[k]) > abs(v[max_index]))
+                max_index = k;
+        // f is 15.16
+        int32_t f = (0x7fffL << 16) / abs(v[max_index]);
+        for (byte k = 0; k < 3; k++)
+            v[k] = ((int32_t)v[k] * f) >> 16;
+    }
+};
 
 struct vec3d
 {
@@ -81,9 +117,9 @@ struct vec3d
         : x(_x), y(_y), z(_z)
     {}
 
-    vec3d divby256()
+    vec3d_16 divby256()
     {
-        return vec3d(x >> 8, y >> 8, z >> 8);
+        return vec3d_16(x >> 8, y >> 8, z >> 8);
     }
 
     vec3d operator +(const vec3d& other)
@@ -119,6 +155,12 @@ struct vec3d
         return vec3d(x >> d, y >> d, z >> d);
     }
 
+    void operator >>=(int8_t d)
+    {
+        for (byte i = 0; i < 3; ++i)
+            v[i] >>= d;
+    }
+
     void operator <<=(int8_t d)
     {
         for (byte i = 0; i < 3; ++i)
@@ -126,6 +168,14 @@ struct vec3d
     }
 
     int32_t dot(const vec3d& other)
+    {
+        int32_t result = 0;
+        for (byte i = 0; i < 3; ++i)
+            result += (v[i] >> 8) * (other.v[i] >> 8);
+        return result;
+    }
+
+    int32_t dot(const vec3d_16& other)
     {
         int32_t result = 0;
         for (byte i = 0; i < 3; ++i)
@@ -143,6 +193,16 @@ struct vec3d
             result.v[i] = (v[i1] >> 8) * (other.v[i2] >> 8) - (v[i2] >> 8) * (other.v[i1] >> 8);
         }
         return result;
+    }
+
+    vec3d cross(vec3d* result, const vec3d& other)
+    {
+        for (byte i = 0; i < 3; ++i)
+        {
+            byte i1 = (i + 1) % 3;
+            byte i2 = (i + 2) % 3;
+            result->v[i] = (v[i1] >> 8) * (other.v[i2] >> 8) - (v[i2] >> 8) * (other.v[i1] >> 8);
+        }
     }
 
     int32_t length()
@@ -237,17 +297,8 @@ struct polygon
 
     void add_vertex(vec3d v, bool draw_edge)
     {
-#ifdef DEBUG
-        if (max_polygon_vertices < num_vertices + 1)
-            max_polygon_vertices = num_vertices + 1;
-#endif
-        if (num_vertices == MAX_POLYGON_VERTICES)
-            return;
-        memcpy(&vertices[num_vertices], &v, sizeof(vec3d));
-        if (draw_edge)
-            draw_edges |= (1 << num_vertices);
-        num_vertices++;
-    };
+        set_vertex(num_vertices++, v, draw_edge);
+    }
 
     void set_vertex(byte index, vec3d v, bool draw_edge)
     {
@@ -262,7 +313,7 @@ struct polygon
             draw_edges |= (1 << index);
         else
             draw_edges &= ~(1 << index);
-    };
+    }
 };
 
 struct polygon2
@@ -320,7 +371,7 @@ struct r_camera
 {
     vec3d at;
     vec3d up, forward, right;
-    vec3d up8, forward8, right8;
+    vec3d_16 up8, forward8, right8;
     int32_t yaw, ayaw;
     int32_t pitch, apitch;
     int32_t a;
@@ -373,8 +424,9 @@ struct render_job
 };
 
 struct render_job_list;
+struct wall_loop_info;
 
-vec3d shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
+vec3d_16 shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
 render_job_list* next_render_jobs;
 render_job_list* current_render_jobs;
 segment temp_segment_buffer;
@@ -488,19 +540,15 @@ size_t max_ram_usage()
 }
 #endif
 
-int32_t lsin(int32_t a)
+// inlining lsin and lsqrt saves us 6 bytes of code
+inline int32_t lsin(int32_t a)
 {
-    return (int32_t)(sin((float)a / 65536.0) * 65536.0);
+    return (int32_t)(sin((float)a / 0x10000) * 0x10000);
 }
 
-int32_t lcos(int32_t a)
+inline int32_t lsqrt(int32_t a)
 {
-    return (int32_t)(cos((float)a / 65536.0) * 65536.0);
-}
-
-int32_t lsqrt(int32_t a)
-{
-    return (int32_t)(sqrt((float)a / 65536.0) * 65356.0);
+    return (int32_t)(sqrt((float)a / 0x10000) * 0x10000);
 }
 
 #ifdef SUB_PIXEL_ACCURACY
@@ -564,7 +612,7 @@ void draw_line_fixed_point(int *p0, int *p1) {
 
 #else
 
-#define draw_line_fixed_point(x0, y0, x1, y1) gb.display.drawLine(x0 >> 4, y0 >> 4, x1 >> 4, y1 >> 4)
+#define draw_line_fixed_point(v0, v1) gb.display.drawLine((float)v0[0], (float)v0[1], (float)v1[0], (float)v1[1])
 
 #endif
 
@@ -780,11 +828,11 @@ void loop_through_segment_walls(uint8_t segment_index, segment* segment,
                                 bool early_adjacent_segment_culling,
                                 bool(*callback)(wall_loop_info*, void*), void* callback_info)
 {
-    LOG("Looping through segment walls of segment %d with %d portals and %d doors.\n",
-        segment_index, segment->portal_count, segment->door_count);
+//     LOG("Looping through segment walls of segment %d with %d portals and %d doors.\n",
+//         segment_index, segment->portal_count, segment->door_count);
     const uint8_t* next_portal_pointer = portals + segment->portals;
     uint8_t next_portal_point = pgm_read_byte(next_portal_pointer);
-    LOG("Next portal byte is 0x%02x...\n", next_portal_point);
+//     LOG("Next portal byte is 0x%02x...\n", next_portal_point);
     uint8_t remaining_portals = segment->portal_count;
     
     const uint8_t* next_door_pointer = doors + segment->doors;
@@ -818,7 +866,7 @@ void loop_through_segment_walls(uint8_t segment_index, segment* segment,
                 next_portal_pointer++;
             }
             next_portal_point = pgm_read_byte(next_portal_pointer);
-            LOG("Next portal byte is 0x%02x...\n", next_portal_point);
+//             LOG("Next portal byte is 0x%02x...\n", next_portal_point);
             
             // early face culling: skip the portal if it's leading to a segment we have already touched in this frame
             if (early_adjacent_segment_culling)
@@ -1063,7 +1111,7 @@ void move_player()
     }
 
     camera.right = camera.forward.cross(camera.up);
-
+    
     camera.up8 = camera.up.divby256();
     camera.forward8 = camera.forward.divby256();
     camera.right8 = camera.right.divby256();
@@ -1176,8 +1224,9 @@ void move_player()
 #endif
 }
 
-void clip_polygon_against_plane(polygon* result, const vec3d& clip_plane_normal, polygon* source)
+void clip_polygon_against_plane(polygon* result, const vec3d_16& clip_plane_normal, polygon* source)
 {
+    LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
     // TODO: In order to save a lot of RAM, we should investigate whether clipping can be done in place
     // so that we don't have to allocate RAM for the destination polyon
     result->num_vertices = 0;
@@ -1206,7 +1255,7 @@ void clip_polygon_against_plane(polygon* result, const vec3d& clip_plane_normal,
         }
         v1 = &source->vertices[(i + 1) % source->num_vertices];
         d1 = v1->dot(clip_plane_normal);
-        flag1 = (d1 > 0);
+        flag1 = d1 > 0;
 
         if (flag0 ^ flag1)
         {
@@ -1225,25 +1274,20 @@ void clip_polygon_against_plane(polygon* result, const vec3d& clip_plane_normal,
         else if (flag1)
             result->add_vertex(intersection, (source->draw_edges >> i) & 1);
     }
+    #ifdef DEBUG
+        int vertex_count_diff = result->num_vertices - source->num_vertices;
+//         if (vertex_count_diff > 0)
+//         {
+//             LOG("old vertex count: %d, new vertex count: %d\n", source->num_vertices, result->num_vertices);
+//             for (byte i = 0; i < source->num_vertices; i++)
+//                 LOG("source %d: %d %d %d\n", i, source->vertices[i].x, source->vertices[i].y, source->vertices[i].z);
+//             for (byte i = 0; i < result->num_vertices; i++)
+//                 LOG("result %d: %d %d %d\n", i, result->vertices[i].x, result->vertices[i].y, result->vertices[i].z);
+//         }
+        if (vertex_count_diff > max_clipped_vertices)
+            max_clipped_vertices = vertex_count_diff;
+    #endif
 }
-
-#ifdef ENABLE_SHOOTING
-    void clip_line_against_plane(polygon* result, const vec3d& clip_plane_normal, polygon* source)
-    {
-        result->num_vertices = 0;
-        float d0 = source->vertices[0].dot(clip_plane_normal);
-        float d1 = source->vertices[1].dot(clip_plane_normal);
-        bool flag0 = (d0 > 0.0);
-        bool flag1 = (d1 > 0.0);
-        // TODO: this is kind of quick and dirty, the line will be discarded unless it is completely
-        // visible... maybe add a calculation of the intersection here, but it works alright for flares
-        if (flag0 && flag1)
-        {
-            result->num_vertices = 2;
-            memcpy(result->vertices, source->vertices, sizeof(vec3d) * 2);
-        }
-    }
-#endif
 
 void transform_world_space_to_view_space(vec3d* v, byte count = 1)
 {
@@ -1253,6 +1297,7 @@ void transform_world_space_to_view_space(vec3d* v, byte count = 1)
         vec3d s(*r);
         for (byte j = 0; j < 3; ++j)
             s.v[j] = (s.v[j] - camera.at.v[j]) >> 8;
+        // TODO: put this into a loop to save code space
         r->x =  s.x * (camera.right8.x  ) + s.y * (camera.right8.y  ) + s.z * (camera.right8.z  );
         r->y =  s.x * (camera.up8.x     ) + s.y * (camera.up8.y     ) + s.z * (camera.up8.z     );
         r->z = -s.x * (camera.forward8.x) - s.y * (camera.forward8.y) - s.z * (camera.forward8.z);
@@ -1378,8 +1423,8 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     #endif
         
     render_segment_callback_info* callback_info = (render_segment_callback_info*)_callback_info;
-    LOG("Handling wall %d in segment %d, and portal to adjacent segment %d...\n", 
-        wall_info->wall_index, callback_info->segment_index, wall_info->adjacent_segment_index);
+//     LOG("Handling wall %d in segment %d, and portal to adjacent segment %d...\n", 
+//         wall_info->wall_index, callback_info->segment_index, wall_info->adjacent_segment_index);
 
     callback_info->p0 = vec3d((int32_t)wall_info->x0 << 16, (int32_t)callback_info->current_segment->floor_height << 14, (int32_t)wall_info->z0 << 16);
     callback_info->p1 = vec3d((int32_t)wall_info->x1 << 16, (int32_t)callback_info->current_segment->floor_height << 14, (int32_t)wall_info->z1 << 16);
@@ -1463,12 +1508,12 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
             w->translate7(callback_info->line, dx, dy, 0, 51 - t51, 128, 76 - t51, callback_info->frustum_count, callback_info->frustum_offset);
             // 24 to 26
             w->translate7(callback_info->line, dx, dy, 64 + t59, 64 - t40, 64 + t39, 64 + t59, callback_info->frustum_count, callback_info->frustum_offset);
-            memcpy(&_portal.vertices[0], &callback_info->line->vertices[0], sizeof(vec3d) * 2);
+            memcpy(&clipped_portal->vertices[0], &callback_info->line->vertices[0], sizeof(vec3d) * 2);
             // 15 to 4
             w->translate7(callback_info->line, dx, dy, 128, 76 + t52, 0, 51 + t51, callback_info->frustum_count, callback_info->frustum_offset);
             // 25 to 23
             w->translate7(callback_info->line, dx, dy, 64 - t60, 64 + t39, 64 - t40, 64 - t60, callback_info->frustum_count, callback_info->frustum_offset);
-            memcpy(&_portal.vertices[2], &callback_info->line->vertices[0], sizeof(vec3d) * 2);
+            memcpy(&clipped_portal->vertices[2], &callback_info->line->vertices[0], sizeof(vec3d) * 2);
             // TODO: just clip, don't render
             clipped_portal = render_polygon(clipped_portal, callback_info->frustum_count, callback_info->frustum_offset);
         }
@@ -1483,9 +1528,9 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     // enqueue next render job if it's a portal
     if (wall_info->adjacent_segment_index >= 0)
     {
-        LOG("clipped portal is %p.\n", clipped_portal);
-        if (clipped_portal)
-            LOG("   ...and has %d vertices.\n", clipped_portal->num_vertices);
+//         LOG("clipped portal is %p.\n", clipped_portal);
+//         if (clipped_portal)
+//             LOG("   ...and has %d vertices.\n", clipped_portal->num_vertices);
         
         // test whether the portal needs to be smaller
         if (wall_info->adjacent_floor_height > callback_info->current_segment->floor_height || 
@@ -1509,31 +1554,31 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
             clipped_portal->set_vertex(1, callback_info->p0, false);
             clipped_portal->set_vertex(2, callback_info->p0, false);
             clipped_portal->set_vertex(3, callback_info->p1, false);
-            _portal.draw_edges = 0;
+            clipped_portal->draw_edges = 0;
             if (wall_info->adjacent_floor_height > callback_info->current_segment->floor_height)
             {
-                _portal.vertices[0].y = (int32_t)wall_info->adjacent_floor_height << 14;
-                _portal.vertices[1].y = (int32_t)wall_info->adjacent_floor_height << 14;
-                _portal.draw_edges |= 1;
+                clipped_portal->vertices[0].y = (int32_t)wall_info->adjacent_floor_height << 14;
+                clipped_portal->vertices[1].y = (int32_t)wall_info->adjacent_floor_height << 14;
+                clipped_portal->draw_edges |= 1;
             }
             else
             {
-                _portal.vertices[0].y = (int32_t)callback_info->current_segment->floor_height << 14;
-                _portal.vertices[1].y = (int32_t)callback_info->current_segment->floor_height << 14;
+                clipped_portal->vertices[0].y = (int32_t)callback_info->current_segment->floor_height << 14;
+                clipped_portal->vertices[1].y = (int32_t)callback_info->current_segment->floor_height << 14;
             }
             if (wall_info->adjacent_ceiling_height < callback_info->current_segment->ceiling_height)
             {
-                _portal.vertices[2].y = (int32_t)wall_info->adjacent_ceiling_height << 14;
-                _portal.vertices[3].y = (int32_t)wall_info->adjacent_ceiling_height << 14;
-                _portal.draw_edges |= 4;
+                clipped_portal->vertices[2].y = (int32_t)wall_info->adjacent_ceiling_height << 14;
+                clipped_portal->vertices[3].y = (int32_t)wall_info->adjacent_ceiling_height << 14;
+                clipped_portal->draw_edges |= 4;
             }
             else
             {
-                _portal.vertices[2].y = (int32_t)callback_info->current_segment->ceiling_height << 14;
-                _portal.vertices[3].y = (int32_t)callback_info->current_segment->ceiling_height << 14;
+                clipped_portal->vertices[2].y = (int32_t)callback_info->current_segment->ceiling_height << 14;
+                clipped_portal->vertices[3].y = (int32_t)callback_info->current_segment->ceiling_height << 14;
             }
-            transform_world_space_to_view_space(_portal.vertices, 4);
-            clipped_portal = render_polygon((polygon*)&_portal, callback_info->frustum_count, callback_info->frustum_offset);
+            transform_world_space_to_view_space(clipped_portal->vertices, 4);
+            clipped_portal = render_polygon(clipped_portal, callback_info->frustum_count, callback_info->frustum_offset);
         }
         
         // enqueue render job:
@@ -1575,7 +1620,10 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
                                     v[vi] <<= 16 - max_log2;
                         #endif
                         
-                        shared_frustum_planes[p] = v[0].cross(v[1]);
+                        vec3d n = v[0].cross(v[1]);
+                        n.normalize();
+                        shared_frustum_planes[p] = vec3d_16(n.x >> 2, n.y >> 2, n.z >> 2);
+                        shared_frustum_planes[p].maximize_length();
                         p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
                     }
                 }
@@ -1667,10 +1715,14 @@ void update_scene()
     *next_render_jobs = render_job_list();
     // prepare camera frustum
     // PRO TIP: put the planes first which discard the most faces (left and right)
-    shared_frustum_planes[0] = vec3d(  75366, 0, -76677);
-    shared_frustum_planes[1] = vec3d( -75366, 0, -76677);
-    shared_frustum_planes[2] = vec3d(0,  132383, -76677);
-    shared_frustum_planes[3] = vec3d(0, -132383, -76677);
+//     shared_frustum_planes[0] = vec3d_16(  75366, 0, -76677);
+//     shared_frustum_planes[1] = vec3d_16( -75366, 0, -76677);
+//     shared_frustum_planes[2] = vec3d_16(0,  132383, -76677);
+//     shared_frustum_planes[3] = vec3d_16(0, -132383, -76677);
+    shared_frustum_planes[0] = vec3d_16(  22969, 0, -23369);
+    shared_frustum_planes[1] = vec3d_16( -22969, 0, -23369);
+    shared_frustum_planes[2] = vec3d_16(0,  32268, -18689);
+    shared_frustum_planes[3] = vec3d_16(0, -32268, -18689);
     current_render_jobs->frustum_plane_offset = 0;
     next_render_jobs->frustum_plane_offset = MAX_SHARED_FRUSTUM_PLANES - 1;
     // render current segment first
@@ -1705,10 +1757,11 @@ void update_scene()
     #endif
     {
         #ifdef SHOW_FRAME_TIME
-            gb.display.print((micros() - start_micros) / 1000.0);
+            gb.display.print((micros() - start_micros) / 1000);
             gb.display.print(F(" ms / "));
-            gb.display.print(1e6 / micros_per_frame);
-            gb.display.println(F(" fps"));
+        // don't run the following line. it adds 864 bytes of code... 
+// //             gb.display.print(1e6 / micros_per_frame);
+// //             gb.display.println(F(" fps"));
         #endif
         #ifdef MONITOR_RAM
             int32_t ram_usage = max_ram_usage();
@@ -1724,6 +1777,7 @@ void update_scene()
             gb.display.println();
             gb.display.println();
             gb.display.println();
+            gb.display.println();
 //             gb.display.print((float)camera.forward.x / 65536.0);
 //             gb.display.print(" ");
 //             gb.display.print((float)camera.forward.y / 65536.0);
@@ -1734,6 +1788,11 @@ void update_scene()
             gb.display.print(camera.current_segment_index);
             gb.display.print("/FD:");
             gb.display.print(faces_drawn);
+//             gb.display.print("/MFP:");
+//             gb.display.print(max_frustum_planes);
+            gb.display.print("/MCV:");
+            gb.display.print(max_clipped_vertices);
+            
             #ifdef ENABLE_SHOOTING
                 gb.display.print("/S:");
                 gb.display.print(num_shots);
