@@ -517,8 +517,6 @@ render_job_list render_jobs_0, render_jobs_1;
 
 bool allow_steering = true;
 r_camera camera;
-// TODO: See if we can do in-place clipping and save 98 bytes of RAM!
-polygon clipped1, clipped2;
 polygon4 _wall;
 polygon4 _portal;
 polygon2 _line;
@@ -1236,7 +1234,8 @@ void move_player()
 #endif
 }
 
-void clip_polygon_against_plane(polygon* result, const vec3d_16& clip_plane_normal, polygon* source)
+// void clip_polygon_against_plane(polygon* result, const vec3d_16& clip_plane_normal, polygon* source)
+void clip_polygon_against_plane(polygon* polygon, const vec3d_16& clip_plane_normal)
 {
 //     LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
     // TODO: In order to save a lot of RAM, we should investigate whether clipping can be done in place
@@ -1336,12 +1335,10 @@ polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byt
             if (!map_mode)
         #endif
         {
-            polygon* target = &clipped1;
             for (int k = 0; k < frustum_count; k++)
             {
-                clip_polygon_against_plane(target, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES], p);
+                clip_polygon_against_plane(p, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES]);
                 // break from loop if we have a degenerate polygon
-                polygon* temp = p; p = target; target = (k == 0) ? &clipped2 : temp;
                 if (p->num_vertices < min_vertex_count)
                     break;
             }
