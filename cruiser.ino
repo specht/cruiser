@@ -217,6 +217,18 @@ struct vec3d
             v[i] = (v[i] >> 8) * l;
     }
 
+    void maximize_length_16()
+    {
+        byte max_index = 0;
+        for (byte k = 1; k < 3; k++)
+            if (abs(v[k]) > abs(v[max_index]))
+                max_index = k;
+        // f is 15.16
+        int32_t f = (0x7fffL << 16) / abs(v[max_index]);
+        for (byte k = 0; k < 3; k++)
+            v[k] = ((int32_t)v[k] * f) >> 16;
+    }
+    
     void rotate(int32_t yaw)
     {
         int32_t s, c;
@@ -1226,9 +1238,13 @@ void move_player()
 
 void clip_polygon_against_plane(polygon* result, const vec3d_16& clip_plane_normal, polygon* source)
 {
-    LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
+//     LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
     // TODO: In order to save a lot of RAM, we should investigate whether clipping can be done in place
     // so that we don't have to allocate RAM for the destination polyon
+    // IN PLACE CLIPPING:
+    // When we clip a convex polygon against a plane, n vertices become at most n+1 vertices, so we can totally
+    // do this in place and we also save time to copy any vertices that remain untouched. 
+    // If we have to insert a vertex, just copy the remaining source vertices one unit down the line... YES!
     result->num_vertices = 0;
     result->draw_edges = 0;
     vec3d *v0 = NULL;
@@ -1392,15 +1408,32 @@ void render_sprite(int32_t x, int32_t y, int32_t z, uint8_t frustum_count, uint8
     _wall.num_vertices = 4;
     _wall.draw_edges = 0xf;
     vec3d p(x, y, z);
-    vec3d dx = camera.right * 16384;
+    vec3d dx = camera.right * 8192;
 //    dx.rotate((camera.wobble >> 8) * (PI2 >> 8));
-    vec3d dy = camera.up * 16384;
-    _wall.vertices[0] = p - dx - dy;
-    _wall.vertices[1] = p + dx - dy;
-    _wall.vertices[2] = p + dx + dy;
-    _wall.vertices[3] = p - dx + dy;
-    transform_world_space_to_view_space(_wall.vertices, 4);
-    render_polygon((polygon*)&_wall, frustum_count, frustum_offset, 3);
+    vec3d dy = camera.up * 8192;
+    for (int32_t px = 0; px < 4; px++)
+    {
+        for (int32_t py = 0; py < 2; py++)
+        {
+            _wall.vertices[0] = p + dx * (px << 16) + dy * (py << 16);
+            _wall.vertices[1] = p + dx * ((px + 1) << 16) + dy * (py << 16);
+            _wall.vertices[2] = p + dx * ((px + 1) << 16) + dy * ((py + 1) << 16);
+            _wall.vertices[3] = p + dx * (px << 16) + dy * ((py + 1) << 16);
+            LOG("%d %d %d\n", _wall.vertices[0].x, _wall.vertices[0].y, _wall.vertices[0].z);
+            transform_world_space_to_view_space(_wall.vertices, 4);
+            render_polygon((polygon*)&_wall, frustum_count, frustum_offset, 3);
+        }
+    }
+    /*
+     * fill the polygon:
+     * - rasterize lines, interpolate u, v coordinates
+     *   - maybe Bresenham is not the best choice here, because we need spans in the end
+     * - keep track of ymin, ymax
+     * - for every line, keep track of xmin, xmax
+     * - render every span
+     *   - 1/z interpolates linearly (maybe ignore perspective, heh...)
+     */
+    
 }
 
 struct render_segment_callback_info {
@@ -1621,9 +1654,9 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
                         #endif
                         
                         vec3d n = v[0].cross(v[1]);
-                        n.normalize();
-                        shared_frustum_planes[p] = vec3d_16(n.x >> 2, n.y >> 2, n.z >> 2);
-                        shared_frustum_planes[p].maximize_length();
+                        n.maximize_length_16();
+                        shared_frustum_planes[p] = vec3d_16(n.x, n.y, n.z);
+                        
                         p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
                     }
                 }
