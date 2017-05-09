@@ -81,3 +81,4 @@ void* pgm_read_ptr(const word* const* addr);
 void* memcpy_P(void* dst, const void* src, size_t size);
 
 void LOG(const char* s, ...);
+void draw_pixel(int x, int y);

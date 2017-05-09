@@ -185,3 +185,13 @@ void LOG(const char* s, ...)
     vprintf(s, arglist);
     va_end(arglist);
 }
+
+void draw_pixel(int x, int y)
+{
+    glBegin(GL_LINE_LOOP);
+    glVertex2f((float)x / 16.0 - 0.2, (float)y / 16.0 - 0.2);
+    glVertex2f((float)x / 16.0 + 0.2, (float)y / 16.0 - 0.2);
+    glVertex2f((float)x / 16.0 + 0.2, (float)y / 16.0 + 0.2);
+    glVertex2f((float)x / 16.0 - 0.2, (float)y / 16.0 + 0.2);
+    glEnd();
+}
