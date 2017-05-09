@@ -1,5 +1,12 @@
 h1. Cruiser - a 3D shooter for the Gamebuino
 
+This is an experiment to find out how much action gameplay can be packed into a game for the Ardunio-based 
+Gamebuino. This means:
+
+* 16 MHz
+* 2 kb RAM
+* 32 kb Flash
+
 Here's a small demo:
 
 !cruiser_demo.gif!
