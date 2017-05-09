@@ -1,4 +1,10 @@
+h1. Cruiser - a 3D shooter for the Gamebuino
+
+Here's a small demo:
+
 !cruiser_demo.gif!
+
+And this is what the corresponding level looks like:
 
 !level.png!
 
