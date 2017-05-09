@@ -9,7 +9,7 @@ const int32_t PI1 = 205887;
 #define MAX_SHARED_FRUSTUM_PLANES 22
 #define MAX_RENDER_ADJACENT_SEGMENTS 8
 #define DEBUG
-#define MONITOR_RAM
+// #define MONITOR_RAM
 #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
 // #define SHOW_TITLE_SCREEN
@@ -58,7 +58,6 @@ int faces_drawn = 0;
 int max_frustum_planes = 0;
 int max_polygon_vertices = 0;
 int segments_drawn = 0;
-int max_clipped_vertices = 0;
 #endif
 
 int32_t lsin(int32_t a);
@@ -520,6 +519,7 @@ r_camera camera;
 polygon4 _wall;
 polygon4 _portal;
 polygon2 _line;
+polygon clipped_polygon;
 
 #ifdef MONITOR_RAM
 extern uint8_t _end;
@@ -1234,24 +1234,33 @@ void move_player()
 #endif
 }
 
+// without in place clipping: 1778 bytes RAM used
+// with in place clipping: 1636 bytes RAM used (saving 142 bytes!)
+
 // void clip_polygon_against_plane(polygon* result, const vec3d_16& clip_plane_normal, polygon* source)
-void clip_polygon_against_plane(polygon* polygon, const vec3d_16& clip_plane_normal)
+void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16& clip_plane_normal)
 {
 //     LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
+//     LOG("Got %d vertices before clipping\n", p->num_vertices);
     // TODO: In order to save a lot of RAM, we should investigate whether clipping can be done in place
     // so that we don't have to allocate RAM for the destination polyon
     // IN PLACE CLIPPING:
     // When we clip a convex polygon against a plane, n vertices become at most n+1 vertices, so we can totally
     // do this in place and we also save time to copy any vertices that remain untouched. 
     // If we have to insert a vertex, just copy the remaining source vertices one unit down the line... YES!
-    result->num_vertices = 0;
-    result->draw_edges = 0;
+    uint8_t source_vertex_index = 0;
+    uint8_t source_vertex_count = source->num_vertices;
+    target->num_vertices = 0;
+    uint8_t target_vertex_index = 0;
+    uint8_t target_draw_edges = 0;
     vec3d *v0 = NULL;
     vec3d *v1 = NULL;
     int32_t d0, d1;
     bool flag0, flag1;
     vec3d intersection;
-    for (int i = 0; i < source->num_vertices; i++)
+    vec3d first_vertex(source->vertices[0]);
+    uint8_t source_draw_edge_offset = 0;
+    while (source_vertex_index < source_vertex_count)
     {
         if (v1)
         {
@@ -1261,19 +1270,26 @@ void clip_polygon_against_plane(polygon* polygon, const vec3d_16& clip_plane_nor
         }
         else
         {
-            v0 = &source->vertices[i];
+            v0 = &source->vertices[source_vertex_index];
             // default: 16.16 * 16.16 => 16.8 * 16.8 => 16.16
             // optimum: 8.16 * 8.16 => 8.12 * 8.12 => 16.16
             d0 = v0->dot(clip_plane_normal);
             // CAVEAT: d >= 0 would result in degenerate faces which we would spend time on!
             flag0 = d0 > 0;
         }
-        v1 = &source->vertices[(i + 1) % source->num_vertices];
+        // TODO: If we wrap around here, the original vertex may already
+        // have been clipped away - unsure whether it's a problem
+        if (source_vertex_index == source_vertex_count - 1)
+            v1 = &first_vertex;
+        else
+            v1 = &source->vertices[source_vertex_index + 1];
         d1 = v1->dot(clip_plane_normal);
         flag1 = d1 > 0;
 
         if (flag0 ^ flag1)
         {
+            // this line segment goes from inside to outside or vice verse,
+            // let's calculate the intersection point
             // d0 and d1 are 8.16
             int32_t f = (-d1 << 8) / (d0 - d1);
             int32_t f1 = 256 - f;
@@ -1282,26 +1298,58 @@ void clip_polygon_against_plane(polygon* polygon, const vec3d_16& clip_plane_nor
         }
         if (flag0)
         {
-            result->add_vertex(*v0, (source->draw_edges >> i) & 1);
+            target->vertices[target_vertex_index] = *v0;
+            if ((source->draw_edges >> (source_vertex_index - source_draw_edge_offset)) & 1)
+                target_draw_edges |= (1 << target_vertex_index);
+            ++target_vertex_index;
+            if (target_vertex_index == MAX_POLYGON_VERTICES)
+                break;
             if (!flag1)
-                result->add_vertex(intersection, false);
+            {
+                if (source == target)
+                {
+                    // NOTICE: If we're doing in place clipping, we have to be very careful here.
+                    // Before we can add the output vertex, we have to move the input vertices 
+                    // to the right.
+                    uint8_t shift_vertex_count = source_vertex_count - source_vertex_index - 1;
+    //                 LOG("%d\n", shift_vertex_count);
+                    if (shift_vertex_count)
+                    {
+                        LOG("We need to shift %d vertices at index %d (count is %d).\n", shift_vertex_count, source_vertex_index, source_vertex_count);
+                        if (source_vertex_count == MAX_POLYGON_VERTICES)
+                            break;
+                        for (uint8_t i = shift_vertex_count; i > 0; --i)
+                        {
+    //                         memcpy(&p->vertices[source_vertex_index + i + 1], &p->vertices[source_vertex_index + i], sizeof(vec3d));
+                            source->vertices[source_vertex_index + i + 1] = source->vertices[source_vertex_index + i];
+    //                         LOG("Shifting: @%d = @%d\n", source_vertex_index + i + 1, source_vertex_index + i);
+                        }
+                        ++source_vertex_count;
+                        ++source_vertex_index;
+                        source_draw_edge_offset += 1;
+                    }
+                }
+                target->vertices[target_vertex_index] = intersection;
+                ++target_vertex_index;
+                if (target_vertex_index == MAX_POLYGON_VERTICES)
+                    break;
+            }
         }
         else if (flag1)
-            result->add_vertex(intersection, (source->draw_edges >> i) & 1);
+        {
+            target->vertices[target_vertex_index] = intersection;
+            if ((source->draw_edges >> (source_vertex_index - source_draw_edge_offset)) & 1)
+                target_draw_edges |= (1 << target_vertex_index);
+            ++target_vertex_index;
+            if (target_vertex_index == MAX_POLYGON_VERTICES)
+                break;
+        }
+        ++source_vertex_index;
     }
-    #ifdef DEBUG
-        int vertex_count_diff = result->num_vertices - source->num_vertices;
-//         if (vertex_count_diff > 0)
-//         {
-//             LOG("old vertex count: %d, new vertex count: %d\n", source->num_vertices, result->num_vertices);
-//             for (byte i = 0; i < source->num_vertices; i++)
-//                 LOG("source %d: %d %d %d\n", i, source->vertices[i].x, source->vertices[i].y, source->vertices[i].z);
-//             for (byte i = 0; i < result->num_vertices; i++)
-//                 LOG("result %d: %d %d %d\n", i, result->vertices[i].x, result->vertices[i].y, result->vertices[i].z);
-//         }
-        if (vertex_count_diff > max_clipped_vertices)
-            max_clipped_vertices = vertex_count_diff;
-    #endif
+    target->num_vertices = target_vertex_index;
+    target->draw_edges = target_draw_edges;
+//     p->draw_edges = 0xff;
+//     LOG("Got %d vertices after clipping\n", target->num_vertices);
 }
 
 void transform_world_space_to_view_space(vec3d* v, byte count = 1)
@@ -1337,13 +1385,23 @@ polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byt
         {
             for (int k = 0; k < frustum_count; k++)
             {
-                clip_polygon_against_plane(p, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES]);
+                LOG("Clipping against frustum plane %d...\n", k);
+                clip_polygon_against_plane(k == 0 ? p : &clipped_polygon, &clipped_polygon, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES]);
+                for (int i = 0; i < p->num_vertices; i++)
+                    LOG("[%d] (%d %d %d) / (%1.1f %1.1f %1.1f)\n", i, 
+                        p->vertices[i].x,
+                        p->vertices[i].y,
+                        p->vertices[i].z,
+                        (float)p->vertices[i].x / 65536.0,
+                        (float)p->vertices[i].y / 65536.0,
+                        (float)p->vertices[i].z / 65536.0);
                 // break from loop if we have a degenerate polygon
                 if (p->num_vertices < min_vertex_count)
                     break;
             }
         }
     #endif
+    p = &clipped_polygon;
 
     // skip this polygon if too many vertices have been clipped away
     if (p->num_vertices < min_vertex_count)
@@ -1371,16 +1429,24 @@ polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byt
             int32_t z1 = (((-1L) << 24) / p->vertices[k].z);
             tv[0] = (((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE) + ((((p->vertices[k].v[0] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
             tv[1] = (((SCREEN_RESOLUTION[1] - 1) << FIXED_POINT_SCALE) - ((((p->vertices[k].v[1] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+            LOG("PROJ [%d] %d %d\n", k, tv[0] >> FIXED_POINT_SCALE, tv[1] >> FIXED_POINT_SCALE);
         }
 
         if (k == 0)
-            memcpy(first, tv, 4);
+        {
+            first[0] = tv[0];
+            first[1] = tv[1];
+        }
+        // TODO: Find out why memcpy doesn't cut it here and further down as well
+//             memcpy(first, tv, 4);
         else
         {
             if ((p->draw_edges >> (k - 1)) & 1)
                 draw_line_fixed_point(last, tv);
         }
-        memcpy(last, tv, 4);
+        last[0] = tv[0];
+        last[1] = tv[1];
+//         memcpy(last, tv, 4);
     }
     if ((p->draw_edges >> (p->num_vertices - 1)) & 1)
         draw_line_fixed_point(last, first);
@@ -1453,8 +1519,8 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     #endif
         
     render_segment_callback_info* callback_info = (render_segment_callback_info*)_callback_info;
-//     LOG("Handling wall %d in segment %d, and portal to adjacent segment %d...\n", 
-//         wall_info->wall_index, callback_info->segment_index, wall_info->adjacent_segment_index);
+    LOG("Handling wall %d in segment %d, and portal to adjacent segment %d...\n", 
+        wall_info->wall_index, callback_info->segment_index, wall_info->adjacent_segment_index);
 
     callback_info->p0 = vec3d((int32_t)wall_info->x0 << 16, (int32_t)callback_info->current_segment->floor_height << 14, (int32_t)wall_info->z0 << 16);
     callback_info->p1 = vec3d((int32_t)wall_info->x1 << 16, (int32_t)callback_info->current_segment->floor_height << 14, (int32_t)wall_info->z1 << 16);
@@ -1500,6 +1566,14 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     }
     else
         transform_world_space_to_view_space(callback_info->wall->vertices, 4);
+    for (int i = 0; i < 4; i++)
+        LOG("[%d] (%d %d %d) / (%1.1f %1.1f %1.1f)\n", i, 
+            callback_info->wall->vertices[i].x,
+            callback_info->wall->vertices[i].y,
+            callback_info->wall->vertices[i].z,
+            (float)callback_info->wall->vertices[i].x / 65536.0,
+            (float)callback_info->wall->vertices[i].y / 65536.0,
+            (float)callback_info->wall->vertices[i].z / 65536.0);
 
     // render the wall
     polygon* clipped_portal = render_polygon(callback_info->wall, callback_info->frustum_count, callback_info->frustum_offset);
@@ -1703,8 +1777,8 @@ void render_segment(uint8_t segment_index, uint8_t frustum_count, uint8_t frustu
     loop_through_segment_walls(segment_index, current_segment, true, &render_segment_callback, &callback_info);
     
     // render object at (1, 8, 0.5)
-    if (segment_index == 0)
-        render_sprite((int32_t)(1.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(8.0 * 65536), frustum_count, frustum_offset);
+//     if (segment_index == 0)
+//         render_sprite((int32_t)(1.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(8.0 * 65536), frustum_count, frustum_offset);
     
     #ifdef ENABLE_SHOOTING
         // render shots in this segment
@@ -1820,8 +1894,6 @@ void update_scene()
             gb.display.print(faces_drawn);
 //             gb.display.print("/MFP:");
 //             gb.display.print(max_frustum_planes);
-            gb.display.print("/MCV:");
-            gb.display.print(max_clipped_vertices);
             
             #ifdef ENABLE_SHOOTING
                 gb.display.print("/S:");

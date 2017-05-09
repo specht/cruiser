@@ -106,6 +106,10 @@ void Display::drawLine(int x0, int y0, int x1, int y1)
 
 void Display::drawLine(float x0, float y0, float x1, float y1)
 {
+    x0 /= 16.0;
+    y0 /= 16.0;
+    x1 /= 16.0;
+    y1 /= 16.0;
     glBegin(GL_LINES);
     glVertex2f(x0, y0);
     glVertex2f(x1, y1);
