@@ -7,7 +7,7 @@ Gamebuino. This means:
 * 2 kb RAM
 * 32 kb Flash
 
-Here's a small demo:
+Here's a small demo (time used per frame is shown in the upper left corner):
 
 !cruiser_demo.gif!
 
