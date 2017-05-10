@@ -104,4 +104,4 @@ Clipping planes currently are defined using a 16-bit normal vector which looks w
 
 Idea:
 
-* define a clipping plane normal vector in screen space using fixed point coordinates with 4 fractional bits, thus we need 11 bits for x and 10 bits for y, so thats 21 * 2 = 42 bits for two points, which amounts to exactly 7 bytes instead of the 6 we use now but it should look just perfect.
+* define a clipping plane normal vector in screen space using fixed point coordinates with 4 fractional bits, thus we need 11 bits for x and 10 bits for y, so thats 21 * 2 = 42 bits for two points, which amounts to 5.25 bytes instead of the 6 we use now, so the memory stays the same, but it should look just perfect.
