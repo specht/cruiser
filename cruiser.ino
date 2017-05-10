@@ -9,14 +9,14 @@ const int32_t PI1 = 205887;
 #define MAX_SHARED_FRUSTUM_PLANES 22
 #define MAX_RENDER_ADJACENT_SEGMENTS 8
 // #define DEBUG
-// #define MONITOR_RAM
-// #define SHOW_FRAME_TIME
+#define MONITOR_RAM
+#define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
 // #define SHOW_TITLE_SCREEN
 // #define ENABLE_STRAFE
 //#define ENABLE_MAP
 #define ENABLE_SHOOTING
-#define MAX_SHOTS 4
+#define MAX_SHOTS 12
 
 #define PREMULTIPLIED_WIDTH 1328
 #define PREMULTIPLIED_HEIGHT 752
@@ -1889,7 +1889,7 @@ void update_scene()
     {
         #ifdef SHOW_FRAME_TIME
             gb.display.print((micros() - start_micros) / 1000);
-            gb.display.print(F(" ms"));
+            gb.display.print(F(" ms "));
         // don't run the following line. it adds 864 bytes of code... 
 // //             gb.display.print(1e6 / micros_per_frame);
 // //             gb.display.println(F(" fps"));

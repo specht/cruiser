@@ -66,7 +66,7 @@ It's the same scene but in the left animation, pixel coordinates are rounded to 
 
 Debugging a Gamebuino game is hard when space is an issue because the Serial library has a non-trivial memory footprint. Luckily the language used is C so this means that the game can just be compiled on a Linux machine with some minimal framework.
 
-Hint: Run @./compile.sh@ and @./cruiser@ in the @port@ directory to see LOG messages everywhichway.
+Hint: Run @./compile.sh@ and @./cruiser@ in the @port@ directory to see LOG messages everywhichway. Oh, and if this crashes, comment out the @#define MONITOR_RAM@ line, you don't just paint the stack on a Linux machine like that. :-)
 
 Here is a demo video showing the debugging version at work:
 
