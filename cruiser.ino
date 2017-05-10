@@ -9,7 +9,7 @@ const int32_t PI1 = 205887;
 #define MAX_SHARED_FRUSTUM_PLANES 22
 #define MAX_RENDER_ADJACENT_SEGMENTS 8
 // #define DEBUG
-#define MONITOR_RAM
+// #define MONITOR_RAM
 #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
 // #define SHOW_TITLE_SCREEN
@@ -36,7 +36,7 @@ const int32_t PI1 = 205887;
 #define draw_pixel(x, y)
 #endif
 
-// #define ROLL_SHIP
+#define ROLL_SHIP
 #define WOBBLE_SHIP
 #define CLIP_TO_FRUSTUM
 #ifdef ENABLE_MAP
@@ -63,7 +63,7 @@ int segments_drawn = 0;
 
 int32_t lsin(int32_t a);
 // save 32 bytes of code by not defining a separate cosine function... heh!
-#define lcos(x) lsin(x + 102943)
+#define lcos(x) lsin((x) + 102943)
 int32_t lsqrt(int32_t a);
 
 byte SCREEN_RESOLUTION[2] = {LCDWIDTH, LCDHEIGHT};
@@ -229,58 +229,38 @@ struct vec3d
             v[k] = ((int32_t)v[k] * f) >> 16;
     }
     
-    void rotate(int32_t yaw)
+    void rotate(uint8_t axis, int32_t s, int32_t c)
     {
-        int32_t s, c;
-        vec3d temp(x, y, z);
-        s = lsin(yaw) >> 8;
-        c = lcos(yaw) >> 8;
-        x = (temp.x >> 8) * c + (temp.z >> 8) * s;
-        y = temp.y;
-        z = (temp.x >> 8) * s + (temp.z >> 8) * c;
+        uint8_t i, k;
+        int32_t temp;
+        switch(axis) 
+        {
+            case 0:
+                // X: +c -s / +s +c
+                temp = v[1];
+                v[1] = (v[1] >> 8) * c + (v[2] >> 8) * -s;
+                v[2] = (temp >> 8) * s + (v[2] >> 8) *  c;
+                break;
+            case 1:
+                // Y: +c +s / -s +c
+                temp = v[0];
+                v[0] = (v[0] >> 8) *  c + (v[2] >> 8) * s;
+                v[2] = (temp >> 8) * -s + (v[2] >> 8) * c;
+                break;
+            case 2:
+                // Z: +c -s / +s +c
+                temp = v[0];
+                v[0] = (v[0] >> 8) * c + (v[1] >> 8) * -s;
+                v[1] = (temp >> 8) * s + (v[1] >> 8) *  c;
+                break;
+        }
     }
-
-    void rotate(int32_t pitch, int32_t yaw)
+    
+    void rotate(uint8_t axis, int32_t phi)
     {
-        int32_t s, c;
-        vec3d temp(x, y, z);
-        s = lsin(pitch) >> 8;
-        c = lcos(pitch) >> 8;
-        x = temp.x;
-        y = (-temp.z >> 8) * s + (temp.y >> 8) * c;
-        z = (temp.z >> 8) * c + (temp.y >> 8) * s;
-
-        temp = vec3d(x, y, z);
-        s = lsin(yaw) >> 8;
-        c = lcos(yaw) >> 8;
-        x = (temp.x >> 8) * c + (temp.z >> 8) * s;
-        y = temp.y;
-        z = (temp.x >> 8) * s + (temp.z >> 8) * c;
-    }
-
-    void rotate(int32_t pitch, int32_t yaw, int32_t roll)
-    {
-        int32_t s, c;
-        vec3d temp(x, y, z);
-        s = lsin(pitch) >> 8;
-        c = lcos(pitch) >> 8;
-        x = temp.x;
-        y = (-temp.z >> 8) * s + (temp.y >> 8) * c;
-        z = (temp.z >> 8) * c + (temp.y >> 8) * s;
-
-        temp = vec3d(x, y, z);
-        s = lsin(yaw) >> 8;
-        c = lcos(yaw) >> 8;
-        x = (temp.x >> 8) * c + (temp.z >> 8) * s;
-        y = temp.y;
-        z = (temp.x >> 8) * s + (temp.z >> 8) * c;
-
-        temp = vec3d(x, y, z);
-        s = lsin(roll) >> 8;
-        c = lcos(roll) >> 8;
-        x = (temp.x >> 8) * c + (temp.y >> 8) * s;
-        y = (-temp.x >> 8) * s + (temp.y >> 8) * c;
-        z = temp.z;
+        int32_t s = lsin(phi) >> 8;
+        int32_t c = lcos(phi) >> 8;
+        rotate(axis, s, c);
     }
     
     void translate7(struct polygon* line, const vec3d& dx, const vec3d& dy, byte sx0, byte sy0, byte sx1, byte sy1,
@@ -653,8 +633,8 @@ void title_screen()
     camera = r_camera();
     camera.at = vec3d((int32_t)(1.5 * 65536), (int32_t)(4.5 * 65536), (int32_t)(9.75 * 65536));
     camera.set_current_segment(0);
-//     camera.at = vec3d((int32_t)(8.5 * 65536), (int32_t)(4.5 * 65536), (int32_t)(1.0 * 65536));
-//     camera.set_current_segment(2);
+//     camera.at = vec3d((int32_t)(16.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(13.0 * 65536));
+//     camera.set_current_segment(11);
 //     camera.yaw = -80000;
     #ifdef ENABLE_SHOOTING
         num_shots = 0;
@@ -1111,19 +1091,26 @@ void move_player()
 #ifdef ENABLE_MAP
     if (map_mode)
     {
-        camera.up.rotate(camera.yaw);
-        camera.forward.rotate(camera.yaw);
+//         camera.up.rotate(camera.yaw);
+//         camera.forward.rotate(camera.yaw);
     }
     else
 #endif
     {
+        int32_t s, c;
 #ifdef ROLL_SHIP
-        camera.up.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 11);
-        camera.forward.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 11);
-#else
-        camera.up.rotate(camera.pitch, camera.yaw);
-        camera.forward.rotate(camera.pitch, camera.yaw);
+        s = lsin((int32_t)camera.ayaw >> 4) >> 8;
+        c = lcos((int32_t)camera.ayaw >> 4) >> 8;
+        camera.up.rotate(2, s, c);
 #endif
+        s = lsin(camera.pitch) >> 8;
+        c = lcos(camera.pitch) >> 8;
+        camera.up.rotate(0, s, c);
+        camera.forward.rotate(0, s, c);
+        s = lsin(camera.yaw) >> 8;
+        c = lcos(camera.yaw) >> 8;
+        camera.up.rotate(1, s, c);
+        camera.forward.rotate(1, s, c);
     }
 
     camera.right = camera.forward.cross(camera.up);
@@ -1273,12 +1260,10 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16
             v0 = v1;
             d0 = d1;
             flag0 = flag1;
-            LOG("v0 = v1\n");
         }
         else
         {
             v0 = &source->vertices[source_vertex_index];
-            LOG("v0 = v[%d]\n", source_vertex_index);
             // default: 16.16 * 16.16 => 16.8 * 16.8 => 16.16
             // optimum: 8.16 * 8.16 => 8.12 * 8.12 => 16.16
             d0 = v0->dot(clip_plane_normal);
@@ -1288,19 +1273,12 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16
         // TODO: If we wrap around here, the original vertex may already
         // have been clipped away - unsure whether it's a problem
         if (source_vertex_index == source_vertex_count - 1)
-        {
             v1 = &first_vertex;
-            LOG("v0 = v[0]\n");
-        }
         else
-        {
             v1 = &source->vertices[source_vertex_index + 1];
-            LOG("v1 = v[%d]\n", source_vertex_index + 1);
-        }
         d1 = v1->dot(clip_plane_normal);
         flag1 = d1 > 0;
 
-        LOG("Flags: %d %d\n", flag0, flag1);
         if (flag0 ^ flag1)
         {
             // this line segment goes from inside to outside or vice verse,
@@ -1308,14 +1286,12 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16
             // d0 and d1 are 8.16
             int32_t f = (-d1 << 8) / (d0 - d1);
             int32_t f1 = 256 - f;
-            LOG("calculating intersection\n");
             for (byte j = 0; j < 3; ++j)
                 intersection.v[j] = (v0->v[j] >> 8) * f + (v1->v[j] >> 8) * f1;
         }
         if (flag0)
         {
             target->vertices[target_vertex_index] = *v0;
-            LOG("target[%d] = v0\n", target_vertex_index);
             if ((source->draw_edges >> (source_vertex_index - source_draw_edge_offset)) & 1)
                 target_draw_edges |= (1 << target_vertex_index);
             ++target_vertex_index;
@@ -1332,7 +1308,6 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16
     //                 LOG("%d\n", shift_vertex_count);
                     if (shift_vertex_count)
                     {
-                        LOG("We need to shift %d vertices at index %d (count is %d).\n", shift_vertex_count, source_vertex_index, source_vertex_count);
                         if (source_vertex_count == MAX_POLYGON_VERTICES)
                             break;
                         for (uint8_t i = shift_vertex_count; i > 0; --i)
@@ -1348,7 +1323,6 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16
                     }
                 }
                 target->vertices[target_vertex_index] = intersection;
-                LOG("target[%d] = intersection\n", target_vertex_index);
 
                 ++target_vertex_index;
                 if (target_vertex_index == MAX_POLYGON_VERTICES)
@@ -1358,7 +1332,6 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16
         else if (flag1)
         {
             target->vertices[target_vertex_index] = intersection;
-            LOG("target[%d] = intersection\n", target_vertex_index);
             if ((source->draw_edges >> (source_vertex_index - source_draw_edge_offset)) & 1)
                 target_draw_edges |= (1 << target_vertex_index);
             ++target_vertex_index;
@@ -1406,19 +1379,19 @@ polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byt
         {
             for (int k = 0; k < frustum_count; k++)
             {
-                LOG("Clipping against frustum plane %d: (%d %d %d)\n", k,
-                    shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].x,
-                    shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].y,
-                    shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].z);
+//                 LOG("Clipping against frustum plane %d: (%d %d %d)\n", k,
+//                     shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].x,
+//                     shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].y,
+//                     shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].z);
                 clip_polygon_against_plane(k == 0 ? p : &clipped_polygon, &clipped_polygon, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES]);
                 for (int i = 0; i < clipped_polygon.num_vertices; i++)
-                    LOG("[%d] (%d %d %d) / (%1.1f %1.1f %1.1f)\n", i, 
-                        clipped_polygon.vertices[i].x,
-                        clipped_polygon.vertices[i].y,
-                        clipped_polygon.vertices[i].z,
-                        (float)clipped_polygon.vertices[i].x / 65536.0,
-                        (float)clipped_polygon.vertices[i].y / 65536.0,
-                        (float)clipped_polygon.vertices[i].z / 65536.0);
+//                     LOG("[%d] (%d %d %d) / (%1.1f %1.1f %1.1f)\n", i, 
+//                         clipped_polygon.vertices[i].x,
+//                         clipped_polygon.vertices[i].y,
+//                         clipped_polygon.vertices[i].z,
+//                         (float)clipped_polygon.vertices[i].x / 65536.0,
+//                         (float)clipped_polygon.vertices[i].y / 65536.0,
+//                         (float)clipped_polygon.vertices[i].z / 65536.0);
                 // break from loop if we have a degenerate polygon
                 if (clipped_polygon.num_vertices < min_vertex_count)
                     break;
@@ -1455,7 +1428,7 @@ polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byt
             int32_t z1 = (((-1L) << 24) / p->vertices[k].z);
             tv[0] = (((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE) + ((((p->vertices[k].v[0] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
             tv[1] = (((SCREEN_RESOLUTION[1] - 1) << FIXED_POINT_SCALE) - ((((p->vertices[k].v[1] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
-            LOG("PROJ [%d] %d %d\n", k, tv[0] >> FIXED_POINT_SCALE, tv[1] >> FIXED_POINT_SCALE);
+//             LOG("PROJ [%d] %d %d\n", k, tv[0] >> FIXED_POINT_SCALE, tv[1] >> FIXED_POINT_SCALE);
             draw_pixel(tv[0], tv[1]);
         }
 
@@ -1546,8 +1519,8 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     #endif
         
     render_segment_callback_info* callback_info = (render_segment_callback_info*)_callback_info;
-    LOG("Handling wall %d in segment %d, and portal to adjacent segment %d...\n", 
-        wall_info->wall_index, callback_info->segment_index, wall_info->adjacent_segment_index);
+//     LOG("Handling wall %d in segment %d, and portal to adjacent segment %d...\n", 
+//         wall_info->wall_index, callback_info->segment_index, wall_info->adjacent_segment_index);
 
     callback_info->p0 = vec3d((int32_t)wall_info->x0 << 16, (int32_t)callback_info->current_segment->floor_height << 14, (int32_t)wall_info->z0 << 16);
     callback_info->p1 = vec3d((int32_t)wall_info->x1 << 16, (int32_t)callback_info->current_segment->floor_height << 14, (int32_t)wall_info->z1 << 16);
@@ -1593,14 +1566,14 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     }
     else
         transform_world_space_to_view_space(callback_info->wall->vertices, 4);
-    for (int i = 0; i < 4; i++)
-        LOG("[%d] (%d %d %d) / (%1.1f %1.1f %1.1f)\n", i, 
-            callback_info->wall->vertices[i].x,
-            callback_info->wall->vertices[i].y,
-            callback_info->wall->vertices[i].z,
-            (float)callback_info->wall->vertices[i].x / 65536.0,
-            (float)callback_info->wall->vertices[i].y / 65536.0,
-            (float)callback_info->wall->vertices[i].z / 65536.0);
+//     for (int i = 0; i < 4; i++)
+//         LOG("[%d] (%d %d %d) / (%1.1f %1.1f %1.1f)\n", i, 
+//             callback_info->wall->vertices[i].x,
+//             callback_info->wall->vertices[i].y,
+//             callback_info->wall->vertices[i].z,
+//             (float)callback_info->wall->vertices[i].x / 65536.0,
+//             (float)callback_info->wall->vertices[i].y / 65536.0,
+//             (float)callback_info->wall->vertices[i].z / 65536.0);
 
     // render the wall
     polygon* clipped_portal = render_polygon(callback_info->wall, callback_info->frustum_count, callback_info->frustum_offset);
