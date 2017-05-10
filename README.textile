@@ -68,9 +68,11 @@ Debugging a Gamebuino game is hard when space is an issue because the Serial lib
 
 Hint: Run @./compile.sh@ and @./cruiser@ in the @port@ directory to see LOG messages everywhichway.
 
-Here is a demo video showing the clipped vertices:
+Here is a demo video showing the debugging version at work:
 
 <img src='https://i.imgur.com/US19wMK.gif' />
+
+Rendering is done via OpenGL, and the resolution is much higher which helps in debugging strange artifacts. In addition, you get lots of LOG messages to the console which can be really helpful as well.
 
 *Doors*
 
