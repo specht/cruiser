@@ -9,8 +9,8 @@ const int32_t PI1 = 205887;
 #define MAX_SHARED_FRUSTUM_PLANES 22
 #define MAX_RENDER_ADJACENT_SEGMENTS 8
 // #define DEBUG
-#define MONITOR_RAM
-#define SHOW_FRAME_TIME
+// #define MONITOR_RAM
+// #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
 // #define SHOW_TITLE_SCREEN
 // #define ENABLE_STRAFE
@@ -479,7 +479,7 @@ struct render_job_list
 };
 
 #ifdef ENABLE_SHOOTING
-    // 11 bytes per shot
+    // 10 bytes per shot
     // TODO: reduce memory footprint!
     struct shot
     {

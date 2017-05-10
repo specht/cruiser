@@ -1,11 +1,6 @@
 h1. Cruiser - a 3D shooter for the Gamebuino
 
-This is an experiment to find out how much action gameplay can be packed into a game for the Ardunio-based 
-Gamebuino. This means:
-
-* 16 MHz
-* 2 kb RAM
-* 32 kb Flash
+This is an experiment to find out how much action gameplay can be packed into a game for the Ardunio-based "Gamebuino":http://www.gamebuino.com. Programming this neat little device means that we have to deal with few resources: There's just 2 kb of RAM and 32 k of flash memory for the program code. Everything that should happen in the game must be crammed into this space. However, we're lucky because there's a powerful CPU in the device, chugging along at a blazing speed of 16 MHz.
 
 Here's a small demo (time used per frame is shown in the upper left corner):
 
@@ -14,3 +9,65 @@ Here's a small demo (time used per frame is shown in the upper left corner):
 And this is what the corresponding level looks like:
 
 <img src='https://i.imgur.com/GZkvG3m.png' />
+
+h2. Usage
+
+Just load the cruiser.ino into your Arduino IDE, upload to the Gamebuino and you're ready to kick ass and chew bubblegum!
+
+h2. Features
+
+*Portal engine*
+
+The engine implemented is a "portal engine":https://en.wikipedia.org/wiki/Portal_rendering. A level consists of convex segments which are connected to each other. Each segment is defined by a 2D outline in the X/Z dimension and may have different floor and ceiling heights.
+
+We always keep track of the segment the camera is currently in and render that segment. If we encounter a transparent wall which leads to an adjacent segment, we render the segment behind that, and so on.
+
+*Clipping*
+
+"Sutherland-Hodgman clipping":https://en.wikipedia.org/wiki/Sutherland%E2%80%93Hodgman_algorithm is used to clip segments to the "viewing frustum":https://en.wikipedia.org/wiki/Viewing_frustum. 
+
+An in-place version of the clipping algorithm is used to minimize the memory footprint: the clipped target polygon can be written to the same memory location the unclipped, source polygon is being read from.
+
+*Player movement*
+
+Player movement is done using accelleration and attenuation, resulting in smooth movements. Strafing is possible but there's only so many buttons on the Gamebuino...
+
+*Hidden surface removal*
+
+The first segment is clipped against a viewing frustum defined by the four screen edges. When an adjacent segment is rendered, this viewing frustum is clipped against the wall through which the adjacent segment is visible, thus taking care of clipping.
+
+Because clipping is performed in view space with the camera at the origin and pointing towards (0, 0, -1), frustum planes can be defined using a normal vector only.
+
+To further save precious RAM, frustum plane normal vectors are currently stored with 16 bits per coordinate.
+
+*Building levels*
+
+Levels are defined in @map.rb@, using a Ruby DSL. The script connects all adjacent segments automatically and creates a header file containing the level definition (@map.h@) plus a visualization of the level (@level.png@).
+
+*Fixed point arithmetic*
+
+This game only uses floats when calculating sine and cosine values. It doesn't use lookup tables for this because the CPU is fast and there's no space for fancy lookup tables. In all other places, fixed point arithmetic is used.
+
+*Lasers!*
+
+This game has lasers. They're fun but they require a lot of memory (10 bytes per shot as of now). 
+
+*Sub-pixel accuracy*
+
+Lines are rendered using the "Bresenham algorithm":https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm, but here it's implemented in a way which allows for sub-pixel accuracy. Even with a small resolution of 84x48 and only black and white pixels, subpixel accuracy makes a difference when things get animated.
+
+(TODO: Insert animations for comparison.)
+
+*Debugging*
+
+Debugging a Gamebuino game is hard when space is an issue because the Serial library has a non-trivial memory footprint. Luckily the language used is C so this means that the game can just be compiled on a Linux machine with some minimal framework.
+
+Hint: Run @./compile.sh@ and @./cruiser@ in the @port@ directory to see LOG messages everywhichway.
+
+*Doors*
+
+Doors are fun and besides that, they also minimize the amount of geometry that needs to be rendered when they're closed, so that's a good thing. Win-win. But doors need fancy animations and at the same time the see-through hole resulting from the animation should have as few vertices as possible, because more vertices mean more frustum planes to clip against. I tried different designs and came up with a version that has never more than 4 vertices.
+
+*Objects*
+
+When you have doors, you need to have keys. I'm currently experimenting with texture mapping and filled polygons.
