@@ -9,7 +9,8 @@ Gamebuino. This means:
 
 Here's a small demo (time used per frame is shown in the upper left corner):
 
-!cruiser_demo.gif!
+!http://i.imgur.com/WDOFdUY.gifv!
+
 
 And this is what the corresponding level looks like:
 
