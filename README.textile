@@ -13,4 +13,4 @@ Here's a small demo (time used per frame is shown in the upper left corner):
 
 And this is what the corresponding level looks like:
 
-<img src='https://i.imgur.com/Cqsr5.png' />
+<img src='https://i.imgur.com/GZkvG3m.png' />
