@@ -70,7 +70,7 @@ Hint: Run @./compile.sh@ and @./cruiser@ in the @port@ directory to see LOG mess
 
 Here is a demo video showing the clipped vertices:
 
-<img src='https://i.imgur.com/US19wMK.gifv' />
+<img src='https://i.imgur.com/US19wMK.gif' />
 
 *Doors*
 
