@@ -60,11 +60,17 @@ Here's a comparison of both modes (pixel accuracy on the left, subpixel accuracy
 
 <img src='https://i.imgur.com/4ZW4FlV.gif' /> <img src='https://i.imgur.com/YyfP1ds.gif' /> 
 
+It's the same scene but in the left animation, pixel coordinates are rounded to integers before line drawing, whereas in the right animation, 4 fractional bits are left in the numbers which are then picked up by the Bresenham line drawing function. There's not much of a difference in terms of speed, it's just a matter of calculating the both the initial error and error delta in such a way that the fractional parts of the given coordinates are taken into account.
+
 *Debugging*
 
 Debugging a Gamebuino game is hard when space is an issue because the Serial library has a non-trivial memory footprint. Luckily the language used is C so this means that the game can just be compiled on a Linux machine with some minimal framework.
 
 Hint: Run @./compile.sh@ and @./cruiser@ in the @port@ directory to see LOG messages everywhichway.
+
+Here is a demo video showing the clipped vertices:
+
+<img src='https://i.imgur.com/US19wMK.gifv' />
 
 *Doors*
 

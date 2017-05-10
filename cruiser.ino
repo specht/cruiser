@@ -623,8 +623,11 @@ void draw_line_fixed_point(int *p0, int *p1) {
 
 #else
 
-// #define draw_line_fixed_point(v0, v1) gb.display.drawLine((float)v0[0], (float)v0[1], (float)v1[0], (float)v1[1])
-#define draw_line_fixed_point(v0, v1) gb.display.drawLine(v0[0] >> 4, v0[1] >> 4, v1[0] >> 4, v1[1] >> 4)
+#ifdef PORT_ENABLED
+    #define draw_line_fixed_point(v0, v1) gb.display.drawLine((float)v0[0], (float)v0[1], (float)v1[0], (float)v1[1])
+#else
+    #define draw_line_fixed_point(v0, v1) gb.display.drawLine(v0[0] >> 4, v0[1] >> 4, v1[0] >> 4, v1[1] >> 4)
+#endif
 
 #endif
 
