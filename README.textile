@@ -1,6 +1,6 @@
 h1. Cruiser - a 3D shooter for the Gamebuino
 
-This is an experiment to find out how much action gameplay can be packed into a game for the Ardunio-based "Gamebuino":http://www.gamebuino.com. Programming this neat little device means that we have to deal with few resources: There's just 2 kb of RAM and 32 k of flash memory for the program code. Everything that should happen in the game must be crammed into this space. However, we're lucky because there's a powerful CPU in the device, chugging along at a blazing speed of 16 MHz.
+This is an experiment to find out how much action gameplay can be packed into a game for the Ardunio-based "Gamebuino":http://www.gamebuino.com. Programming this neat little device means that we have to deal with few resources: There's just 2 kb of RAM and 32 k of flash memory for the program code. Everything that should happen in the game must be crammed into this space. However, we're lucky because there's a powerful CPU in the device, chugging along at a blazing speed of 16 MHz. Let's have a moment of silence for the "poor souls":https://github.com/mgolombeck/3D-Demo that have to deal with a 1 MHz CPU.
 
 Here's a small demo (time used per frame is shown in the upper left corner):
 
