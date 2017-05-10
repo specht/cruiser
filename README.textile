@@ -56,7 +56,9 @@ This game has lasers. They're fun but they require a lot of memory (10 bytes per
 
 Lines are rendered using the "Bresenham algorithm":https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm, but here it's implemented in a way which allows for sub-pixel accuracy. Even with a small resolution of 84x48 and only black and white pixels, subpixel accuracy makes a difference when things get animated.
 
-(TODO: Insert animations for comparison.)
+Here's a comparison of both modes (pixel accuracy on the left, subpixel accuracy on the right):
+
+<img src='https://i.imgur.com/4ZW4FlV.gif' /> <img src='https://i.imgur.com/YyfP1ds.gif' /> 
 
 *Debugging*
 
