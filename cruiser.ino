@@ -85,18 +85,6 @@ struct vec3d_16
     vec3d_16(int16_t _x, int16_t _y, int16_t _z)
         : x(_x), y(_y), z(_z)
     {}
-    
-    void maximize_length()
-    {
-        byte max_index = 0;
-        for (byte k = 1; k < 3; k++)
-            if (abs(v[k]) > abs(v[max_index]))
-                max_index = k;
-        // f is 15.16
-        int32_t f = (0x7fffL << 16) / abs(v[max_index]);
-        for (byte k = 0; k < 3; k++)
-            v[k] = ((int32_t)v[k] * f) >> 16;
-    }
 };
 
 struct vec3d
@@ -217,16 +205,22 @@ struct vec3d
             v[i] = (v[i] >> 8) * l;
     }
 
-    void maximize_length_16()
+    bool maximize_length_16()
     {
         byte max_index = 0;
         for (byte k = 1; k < 3; k++)
             if (abs(v[k]) > abs(v[max_index]))
                 max_index = k;
         // f is 15.16
-        int32_t f = (0x7fffL << 16) / abs(v[max_index]);
-        for (byte k = 0; k < 3; k++)
-            v[k] = ((int32_t)v[k] * f) >> 16;
+        if (v[max_index])
+        {
+            int32_t f = (0x7fffL << 16) / abs(v[max_index]);
+            for (byte k = 0; k < 3; k++)
+                v[k] = ((int32_t)v[k] * f) >> 16;
+            return true;
+        }
+        else
+            return false;
     }
     
     void rotate(uint8_t axis, int32_t s, int32_t c)
@@ -1099,14 +1093,17 @@ void move_player()
     {
         int32_t s, c;
 #ifdef ROLL_SHIP
+        // roll (rotate around z axis - tilt left and right)
         s = lsin((int32_t)camera.ayaw >> 4) >> 8;
         c = lcos((int32_t)camera.ayaw >> 4) >> 8;
         camera.up.rotate(2, s, c);
 #endif
+        // pitch (rotate around x axis - up and down)
         s = lsin(camera.pitch) >> 8;
         c = lcos(camera.pitch) >> 8;
         camera.up.rotate(0, s, c);
         camera.forward.rotate(0, s, c);
+        // yaw (rotate around y axis - turn left and right)
         s = lsin(camera.yaw) >> 8;
         c = lcos(camera.yaw) >> 8;
         camera.up.rotate(1, s, c);
@@ -1725,10 +1722,12 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
                         #endif
                         
                         vec3d n = v[0].cross(v[1]);
-                        n.maximize_length_16();
-                        shared_frustum_planes[p] = vec3d_16(n.x, n.y, n.z);
-                        
-                        p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
+                        if (n.maximize_length_16())
+                        {
+                            // only add the frustum plane if it's not degenerate
+                            shared_frustum_planes[p] = vec3d_16(n.x, n.y, n.z);
+                            p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
+                        }
                     }
                 }
             }
