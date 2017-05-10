@@ -81,3 +81,27 @@ Doors are fun and besides that, they also minimize the amount of geometry that n
 *Objects*
 
 When you have doors, you need to have keys. I'm currently experimenting with texture mapping and filled polygons.
+
+h2. Further ideas for saving RAM
+
+*Shots*
+
+Shots currently use 10 bytes per shot: 
+
+* 6 bytes for the position (16-bit vector)
+* 3 bytes for the direction (8-bit vector)
+* 1 byte for the current segment
+
+Ideas:
+
+* encode the position relative to segment position, thus saving bits
+* encode the direction not as a xyz vector which may contain every point in a cube, but rather encode the principal direction with 3 bits and encode the rest using two coordinates with a resolution of 6 bits each, this would save one byte
+* because two shots are always fired at the same time, they can share the starting position and direction
+
+*Clipping planes*
+
+Clipping planes currently are defined using a 16-bit normal vector which looks worse than using 32-bit normal vectors, especially in the center of the screen where accuracy is low.
+
+Idea:
+
+* define a clipping plane normal vector in screen space using fixed point coordinates with 4 fractional bits, thus we need 11 bits for x and 10 bits for y, so thats 21 * 2 = 42 bits for two points, which amounts to exactly 7 bytes instead of the 6 we use now but it should look just perfect.

@@ -36,7 +36,7 @@ const int32_t PI1 = 205887;
 #define draw_pixel(x, y)
 #endif
 
-//#define ROLL_SHIP
+// #define ROLL_SHIP
 #define WOBBLE_SHIP
 #define CLIP_TO_FRUSTUM
 #ifdef ENABLE_MAP
@@ -1118,8 +1118,8 @@ void move_player()
 #endif
     {
 #ifdef ROLL_SHIP
-        camera.up.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 8);
-        camera.forward.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 8);
+        camera.up.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 11);
+        camera.forward.rotate(camera.pitch, camera.yaw, (-camera.ayaw * 256) >> 11);
 #else
         camera.up.rotate(camera.pitch, camera.yaw);
         camera.forward.rotate(camera.pitch, camera.yaw);
