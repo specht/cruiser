@@ -189,9 +189,9 @@ void LOG(const char* s, ...)
 void draw_pixel(int x, int y)
 {
     glBegin(GL_LINE_LOOP);
-    glVertex2f((float)x / 16.0 - 0.2, (float)y / 16.0 - 0.2);
-    glVertex2f((float)x / 16.0 + 0.2, (float)y / 16.0 - 0.2);
-    glVertex2f((float)x / 16.0 + 0.2, (float)y / 16.0 + 0.2);
-    glVertex2f((float)x / 16.0 - 0.2, (float)y / 16.0 + 0.2);
+    glVertex2f((float)x / 16.0 - 0.1, (float)y / 16.0 - 0.1);
+    glVertex2f((float)x / 16.0 + 0.1, (float)y / 16.0 - 0.1);
+    glVertex2f((float)x / 16.0 + 0.1, (float)y / 16.0 + 0.1);
+    glVertex2f((float)x / 16.0 - 0.1, (float)y / 16.0 + 0.1);
     glEnd();
 }

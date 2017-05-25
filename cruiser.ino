@@ -9,7 +9,7 @@ const int32_t PI1 = 205887;
 #define MAX_SHARED_FRUSTUM_PLANES 22
 #define MAX_RENDER_ADJACENT_SEGMENTS 8
 // #define DEBUG
-// #define MONITOR_RAM
+#define MONITOR_RAM
 #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
 // #define SHOW_TITLE_SCREEN
@@ -257,8 +257,33 @@ struct vec3d
         rotate(axis, s, c);
     }
     
-    void translate7(struct polygon* line, const vec3d& dx, const vec3d& dy, byte sx0, byte sy0, byte sx1, byte sy1,
-        byte frustum_count, byte frustum_offset);
+    void translate7(struct polygon* line, const vec3d& dx, const vec3d& dy, byte sx0, byte sy0, byte sx1, byte sy1);
+};
+
+struct frustum_plane
+{
+    // this structure uses 6 bytes
+    int16_t x0: 12;
+    int16_t y0: 11;
+    int16_t x1: 12;
+    int16_t y1: 11;
+
+    frustum_plane()
+        : x0(0), y0(0), x1(0), y1(0)
+    {
+    }
+
+    frustum_plane(uint16_t _x0, uint16_t _y0, uint16_t _x1, uint16_t _y1)
+        : x0(_x0 - 672 + 8) , y0(384 - _y0 - 8) , x1(_x1 - 672 + 8) , y1(384 - _y1 - 8)
+    {
+    }
+    
+    void to_vec3d(vec3d* target)
+    {
+        vec3d a((int32_t)x0 << 8, (int32_t)y0 << 8, -172032);
+        *target = vec3d((int32_t)x1 << 8, (int32_t)y1 << 8, -172032);
+        *target = target->cross(a);
+    }
 };
 
 struct polygon
@@ -412,10 +437,12 @@ struct render_job
 struct render_job_list;
 struct wall_loop_info;
 
-vec3d_16 shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
+frustum_plane shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
 render_job_list* next_render_jobs;
 render_job_list* current_render_jobs;
 segment temp_segment_buffer;
+vec3d current_frustum_normals[8];
+uint8_t current_frustum_normal_count;
 
 struct render_job_list
 {
@@ -1228,7 +1255,7 @@ void move_player()
 // with in place clipping: 1636 bytes RAM used (saving 142 bytes!)
 
 // void clip_polygon_against_plane(polygon* result, const vec3d_16& clip_plane_normal, polygon* source)
-void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d_16& clip_plane_normal)
+void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d& clip_plane_normal)
 {
 //     LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
 //     LOG("Got %d vertices before clipping\n", p->num_vertices);
@@ -1367,29 +1394,23 @@ void transform_world_space_to_view_space(vec3d* v, byte count = 1)
     }
 }
 
-polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byte min_vertex_count = 3)
+void project_vertex(const vec3d& p, LINE_COORDINATE_TYPE* tv)
+{
+    int32_t z1 = (((-1L) << 24) / p.z);
+    tv[0] = (((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE) + ((((p.x * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+    tv[1] = (((SCREEN_RESOLUTION[1] - 1) << FIXED_POINT_SCALE) - ((((p.y * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+}
+
+polygon* render_polygon(polygon* p, byte min_vertex_count = 3)
 {
     #ifdef CLIP_TO_FRUSTUM
         #ifdef ENABLE_MAP
             if (!map_mode)
         #endif
         {
-            for (int k = 0; k < frustum_count; k++)
+            for (int k = 0; k < current_frustum_normal_count; k++)
             {
-//                 LOG("Clipping against frustum plane %d: (%d %d %d)\n", k,
-//                     shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].x,
-//                     shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].y,
-//                     shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES].z);
-                clip_polygon_against_plane(k == 0 ? p : &clipped_polygon, &clipped_polygon, shared_frustum_planes[(frustum_offset + k) % MAX_SHARED_FRUSTUM_PLANES]);
-                for (int i = 0; i < clipped_polygon.num_vertices; i++)
-//                     LOG("[%d] (%d %d %d) / (%1.1f %1.1f %1.1f)\n", i, 
-//                         clipped_polygon.vertices[i].x,
-//                         clipped_polygon.vertices[i].y,
-//                         clipped_polygon.vertices[i].z,
-//                         (float)clipped_polygon.vertices[i].x / 65536.0,
-//                         (float)clipped_polygon.vertices[i].y / 65536.0,
-//                         (float)clipped_polygon.vertices[i].z / 65536.0);
-                // break from loop if we have a degenerate polygon
+                clip_polygon_against_plane(k == 0 ? p : &clipped_polygon, &clipped_polygon, current_frustum_normals[k]);
                 if (clipped_polygon.num_vertices < min_vertex_count)
                     break;
             }
@@ -1422,9 +1443,10 @@ polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byt
             else
         #endif
         {
-            int32_t z1 = (((-1L) << 24) / p->vertices[k].z);
-            tv[0] = (((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE) + ((((p->vertices[k].v[0] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
-            tv[1] = (((SCREEN_RESOLUTION[1] - 1) << FIXED_POINT_SCALE) - ((((p->vertices[k].v[1] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+            project_vertex(p->vertices[k], tv);
+//             int32_t z1 = (((-1L) << 24) / p->vertices[k].z);
+//             tv[0] = (((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE) + ((((p->vertices[k].v[0] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+//             tv[1] = (((SCREEN_RESOLUTION[1] - 1) << FIXED_POINT_SCALE) - ((((p->vertices[k].v[1] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
 //             LOG("PROJ [%d] %d %d\n", k, tv[0] >> FIXED_POINT_SCALE, tv[1] >> FIXED_POINT_SCALE);
             draw_pixel(tv[0], tv[1]);
         }
@@ -1451,8 +1473,7 @@ polygon* render_polygon(polygon* p, byte frustum_count, byte frustum_offset, byt
     return p;
 }
 
-void vec3d::translate7(polygon* line, const vec3d& dx, const vec3d& dy, byte sx0, byte sy0, byte sx1, byte sy1,
-    byte frustum_count, byte frustum_offset)
+void vec3d::translate7(polygon* line, const vec3d& dx, const vec3d& dy, byte sx0, byte sy0, byte sx1, byte sy1)
 {
     line->vertices[0].x = this->x + ((dx.x * sx0) >> 7) + ((dy.x * sy0) >> 7);
     line->vertices[0].y = this->y + ((dx.y * sx0) >> 7) + ((dy.y * sy0) >> 7);
@@ -1460,28 +1481,29 @@ void vec3d::translate7(polygon* line, const vec3d& dx, const vec3d& dy, byte sx0
     line->vertices[1].x = this->x + ((dx.x * sx1) >> 7) + ((dy.x * sy1) >> 7);
     line->vertices[1].y = this->y + ((dx.y * sx1) >> 7) + ((dy.y * sy1) >> 7);
     line->vertices[1].z = this->z + ((dx.z * sx1) >> 7) + ((dy.z * sy1) >> 7);
-    render_polygon(line, frustum_count, frustum_offset, 2);
+    render_polygon(line, 2);
 }
 
-void render_sprite(int32_t x, int32_t y, int32_t z, uint8_t frustum_count, uint8_t frustum_offset)
+void render_sprite(int32_t x, int32_t y, int32_t z)
 {
+    LOG("Rendering sprite...\n");
     _wall.num_vertices = 4;
     _wall.draw_edges = 0xf;
     vec3d p(x, y, z);
     vec3d dx = camera.right * 8192;
 //    dx.rotate((camera.wobble >> 8) * (PI2 >> 8));
     vec3d dy = camera.up * 8192;
-    for (int32_t px = 0; px < 4; px++)
+    for (int32_t px = 0; px < 1; px++)
     {
-        for (int32_t py = 0; py < 2; py++)
+        for (int32_t py = 0; py < 1; py++)
         {
             _wall.vertices[0] = p + dx * (px << 16) + dy * (py << 16);
-            _wall.vertices[1] = p + dx * ((px + 1) << 16) + dy * (py << 16);
-            _wall.vertices[2] = p + dx * ((px + 1) << 16) + dy * ((py + 1) << 16);
-            _wall.vertices[3] = p + dx * (px << 16) + dy * ((py + 1) << 16);
+            _wall.vertices[1] = p + dx * ((px + 4) << 16) + dy * (py << 16);
+            _wall.vertices[2] = p + dx * ((px + 4) << 16) + dy * ((py + 4) << 16);
+            _wall.vertices[3] = p + dx * (px << 16) + dy * ((py + 4) << 16);
             LOG("%d %d %d\n", _wall.vertices[0].x, _wall.vertices[0].y, _wall.vertices[0].z);
             transform_world_space_to_view_space(_wall.vertices, 4);
-            render_polygon((polygon*)&_wall, frustum_count, frustum_offset, 3);
+            render_polygon((polygon*)&_wall, 3);
         }
     }
     /*
@@ -1505,8 +1527,6 @@ struct render_segment_callback_info {
     uint8_t segment_index;
     segment* current_segment;
     vec3d p0, p1;
-    uint8_t frustum_count;
-    uint8_t frustum_offset;
 };
 
 bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
@@ -1573,7 +1593,7 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
 //             (float)callback_info->wall->vertices[i].z / 65536.0);
 
     // render the wall
-    polygon* clipped_portal = render_polygon(callback_info->wall, callback_info->frustum_count, callback_info->frustum_offset);
+    polygon* clipped_portal = render_polygon(callback_info->wall);
     if (!clipped_portal)
         return true;
     
@@ -1606,22 +1626,22 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
             clipped_portal->num_vertices = 4;
             clipped_portal->draw_edges = 0;
             // 3 to 14
-            w->translate7(callback_info->line, dx, dy, 0, 51 - t51, 128, 76 - t51, callback_info->frustum_count, callback_info->frustum_offset);
+            w->translate7(callback_info->line, dx, dy, 0, 51 - t51, 128, 76 - t51);
             // 24 to 26
-            w->translate7(callback_info->line, dx, dy, 64 + t59, 64 - t40, 64 + t39, 64 + t59, callback_info->frustum_count, callback_info->frustum_offset);
+            w->translate7(callback_info->line, dx, dy, 64 + t59, 64 - t40, 64 + t39, 64 + t59);
             memcpy(&clipped_portal->vertices[0], &callback_info->line->vertices[0], sizeof(vec3d) * 2);
             // 15 to 4
-            w->translate7(callback_info->line, dx, dy, 128, 76 + t52, 0, 51 + t51, callback_info->frustum_count, callback_info->frustum_offset);
+            w->translate7(callback_info->line, dx, dy, 128, 76 + t52, 0, 51 + t51);
             // 25 to 23
-            w->translate7(callback_info->line, dx, dy, 64 - t60, 64 + t39, 64 - t40, 64 - t60, callback_info->frustum_count, callback_info->frustum_offset);
+            w->translate7(callback_info->line, dx, dy, 64 - t60, 64 + t39, 64 - t40, 64 - t60);
             memcpy(&clipped_portal->vertices[2], &callback_info->line->vertices[0], sizeof(vec3d) * 2);
             // TODO: just clip, don't render
-            clipped_portal = render_polygon(clipped_portal, callback_info->frustum_count, callback_info->frustum_offset);
+            clipped_portal = render_polygon(clipped_portal);
         }
         else
         {
             LOG("Door is closed.\n");
-            w->translate7(callback_info->line, dx, dy, 0, 51, 128, 76, callback_info->frustum_count, callback_info->frustum_offset);
+            w->translate7(callback_info->line, dx, dy, 0, 51, 128, 76);
             clipped_portal = 0;
         }
     }
@@ -1679,7 +1699,7 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
                 clipped_portal->vertices[3].y = (int32_t)callback_info->current_segment->ceiling_height << 14;
             }
             transform_world_space_to_view_space(clipped_portal->vertices, 4);
-            clipped_portal = render_polygon(clipped_portal, callback_info->frustum_count, callback_info->frustum_offset);
+            clipped_portal = render_polygon(clipped_portal);
         }
         
         // enqueue render job:
@@ -1701,33 +1721,39 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
                     for (int k = 0; k < clipped_portal->num_vertices; k++)
                     {
                         byte next_k = (k + 1) % clipped_portal->num_vertices;
-                        vec3d v[2] = {clipped_portal->vertices[next_k], clipped_portal->vertices[k]};
-                        #ifdef FRUSTUM_PLANE_CALCULATION_PREMULTIPLY
-                            // determine if we need to premultiply vectors so that we don't get hiccups with 
-                            // vertices close to the viewer (close to the apex of the viewing frustum)
-                            byte max_log2 = 0;
-                            for (byte vi = 0; vi < 2; ++vi)
-                            {
-                                for (byte vj = 0; vj < 3; ++vj)
-                                {
-                                    byte test_log2 = log2(v[vi].v[vj]);
-                                    if (test_log2 > max_log2)
-                                        max_log2 = test_log2;
-                                }
-                            }
-                            
-                            if (max_log2 < 16)
-                                for (byte vi = 0; vi < 2; ++vi)
-                                    v[vi] <<= 16 - max_log2;
-                        #endif
+                        LINE_COORDINATE_TYPE tv0[2], tv1[2];
+                        project_vertex(clipped_portal->vertices[k], tv0);
+                        project_vertex(clipped_portal->vertices[next_k], tv1);
+                        shared_frustum_planes[p] = frustum_plane(tv0[0], tv0[1], tv1[0], tv1[1]);
+                        p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
                         
-                        vec3d n = v[0].cross(v[1]);
-                        if (n.maximize_length_16())
-                        {
-                            // only add the frustum plane if it's not degenerate
-                            shared_frustum_planes[p] = vec3d_16(n.x, n.y, n.z);
-                            p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
-                        }
+//                         vec3d v[2] = {clipped_portal->vertices[next_k], clipped_portal->vertices[k]};
+//                         #ifdef FRUSTUM_PLANE_CALCULATION_PREMULTIPLY
+//                             // determine if we need to premultiply vectors so that we don't get hiccups with 
+//                             // vertices close to the viewer (close to the apex of the viewing frustum)
+//                             byte max_log2 = 0;
+//                             for (byte vi = 0; vi < 2; ++vi)
+//                             {
+//                                 for (byte vj = 0; vj < 3; ++vj)
+//                                 {
+//                                     byte test_log2 = log2(v[vi].v[vj]);
+//                                     if (test_log2 > max_log2)
+//                                         max_log2 = test_log2;
+//                                 }
+//                             }
+//                             
+//                             if (max_log2 < 16)
+//                                 for (byte vi = 0; vi < 2; ++vi)
+//                                     v[vi] <<= 16 - max_log2;
+//                         #endif
+//                         
+//                         vec3d n = v[0].cross(v[1]);
+//                         if (n.maximize_length_16())
+//                         {
+//                             // only add the frustum plane if it's not degenerate
+// //                             shared_frustum_planes[p] = vec3d_16(n.x, n.y, n.z);
+// //                             p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
+//                         }
                     }
                 }
             }
@@ -1770,14 +1796,16 @@ void render_segment(uint8_t segment_index, uint8_t frustum_count, uint8_t frustu
     callback_info.line = (polygon*)&_line;
     callback_info.segment_index = segment_index;
     callback_info.current_segment = current_segment;
-    callback_info.frustum_count = frustum_count;
-    callback_info.frustum_offset = frustum_offset;
+
+    current_frustum_normal_count = frustum_count;
+    for (uint8_t i = 0; i < frustum_count; ++i)
+        shared_frustum_planes[(frustum_offset + i) % MAX_SHARED_FRUSTUM_PLANES].to_vec3d(&current_frustum_normals[i]);
     
     loop_through_segment_walls(segment_index, current_segment, true, &render_segment_callback, &callback_info);
     
     // render object at (1, 8, 0.5)
-//     if (segment_index == 0)
-//         render_sprite((int32_t)(1.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(8.0 * 65536), frustum_count, frustum_offset);
+    if (segment_index == 0)
+        render_sprite((int32_t)(1.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(8.0 * 65536));
     
     #ifdef ENABLE_SHOOTING
         // render shots in this segment
@@ -1797,7 +1825,7 @@ void render_segment(uint8_t segment_index, uint8_t frustum_count, uint8_t frustu
             // transform flare to view space
             transform_world_space_to_view_space(flare_polygon.vertices, 2);
             
-            render_polygon((polygon*)&flare_polygon, frustum_count, frustum_offset, 2);
+            render_polygon((polygon*)&flare_polygon, 2);
         }
     #endif
 }
@@ -1818,14 +1846,14 @@ void update_scene()
     *next_render_jobs = render_job_list();
     // prepare camera frustum
     // PRO TIP: put the planes first which discard the most faces (left and right)
-//     shared_frustum_planes[0] = vec3d_16(  75366, 0, -76677);
-//     shared_frustum_planes[1] = vec3d_16( -75366, 0, -76677);
-//     shared_frustum_planes[2] = vec3d_16(0,  132383, -76677);
-//     shared_frustum_planes[3] = vec3d_16(0, -132383, -76677);
-    shared_frustum_planes[0] = vec3d_16(  22969, 0, -23369);
-    shared_frustum_planes[1] = vec3d_16( -22969, 0, -23369);
-    shared_frustum_planes[2] = vec3d_16(0,  32268, -18689);
-    shared_frustum_planes[3] = vec3d_16(0, -32268, -18689);
+//     shared_frustum_planes[0] = vec3d_16(  22969, 0, -23369);
+//     shared_frustum_planes[1] = vec3d_16( -22969, 0, -23369);
+//     shared_frustum_planes[2] = vec3d_16(0,  32268, -18689);
+//     shared_frustum_planes[3] = vec3d_16(0, -32268, -18689);
+    shared_frustum_planes[0] = frustum_plane(0, 0, 0, 767);       // left
+    shared_frustum_planes[1] = frustum_plane(1343, 767, 1343, 0); // right
+    shared_frustum_planes[2] = frustum_plane(0, 767, 1343, 767);  // bottom
+    shared_frustum_planes[3] = frustum_plane(1343, 0, 0, 0);  // top
     current_render_jobs->frustum_plane_offset = 0;
     next_render_jobs->frustum_plane_offset = MAX_SHARED_FRUSTUM_PLANES - 1;
     // render current segment first
@@ -1859,6 +1887,43 @@ void update_scene()
         else
     #endif
     {
+//         gb.display.print(" wi:");
+//         gb.display.print(sizeof(wall_info));
+//         gb.display.print(" rj01:");
+//         gb.display.print(sizeof(render_jobs_0) + sizeof(render_jobs_1));
+//         gb.display.print(" sfp:");
+//         gb.display.print(sizeof(shared_frustum_planes));
+//         gb.display.print(" tsb:");
+//         gb.display.print(sizeof(temp_segment_buffer));
+//         gb.display.print(" c:");
+//         gb.display.print(sizeof(camera));
+//         gb.display.print(" w:");
+//         gb.display.print(sizeof(_wall));
+//         gb.display.print(" p:");
+//         gb.display.print(sizeof(_portal));
+//         gb.display.print(" l:");
+//         gb.display.print(sizeof(_line));
+//         gb.display.print(" cp:");
+//         gb.display.print(sizeof(clipped_polygon));
+//         gb.display.print(" s:");
+//         gb.display.print(sizeof(shots));
+//         gb.display.print(" cdcbi:");
+//         gb.display.print(sizeof(collision_detection_callback_info));
+//         gb.display.print(" rscbi:");
+//         gb.display.print(sizeof(render_segment_callback_info));
+//         gb.display.print(" ");
+        
+//         wall_loop_info wall_info;
+//         render_job_list render_jobs_0, render_jobs_1;
+//         frustum_plane shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
+//         render_job_list* next_render_jobs;
+//         render_job_list* current_render_jobs;
+//         segment temp_segment_buffer;
+//         r_camera camera;
+//         polygon4 _wall;
+//         polygon4 _portal;
+//         polygon2 _line;
+//         polygon clipped_polygon;
         #ifdef SHOW_FRAME_TIME
             gb.display.print((micros() - start_micros) / 1000);
             gb.display.print(F(" ms "));

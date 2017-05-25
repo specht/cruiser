@@ -621,8 +621,22 @@ segment(21, 18) do
     v -1, 0
 end
 
-segment(22, 14) do
-    height 8, 20
+segment(22, 18) do
+    height 10, 20
+    v 1, 0
+    v 0, -1
+    v -1, 0
+end
+
+segment(23, 18) do
+    height 10, 14
+    v 1, 0
+    v 0, -1
+    v -1, 0
+end
+
+segment(24, 14) do
+    height 0, 14
     v 0, 3
     v 0, 1
     v 6, 0

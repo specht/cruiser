@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#define SCREEN_SCALE 8
+#define SCREEN_SCALE 16
 #define LINE_COORDINATE_TYPE int
 #define LOG_ALREADY_DEFINED
 #define PORT_ENABLED
