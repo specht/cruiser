@@ -5,11 +5,9 @@ const int32_t PI2 = 411775;
 const int32_t PI1 = 205887;
 
 #define MAX_POLYGON_VERTICES 8
-#define MAX_JOB_COUNT 3
-#define MAX_SHARED_FRUSTUM_PLANES 22
-#define MAX_RENDER_ADJACENT_SEGMENTS 8
+#define FRUSTUM_STACK_SIZE 48
 // #define DEBUG
-#define MONITOR_RAM
+// #define MONITOR_RAM
 #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
 // #define SHOW_TITLE_SCREEN
@@ -59,6 +57,7 @@ int faces_drawn = 0;
 int max_frustum_planes = 0;
 int max_polygon_vertices = 0;
 int segments_drawn = 0;
+int max_frustum_stack_size = 0;
 #endif
 
 int32_t lsin(int32_t a);
@@ -260,28 +259,26 @@ struct vec3d
     void translate7(struct polygon* line, const vec3d& dx, const vec3d& dy, byte sx0, byte sy0, byte sx1, byte sy1);
 };
 
-struct frustum_plane
+struct frustum_plane_2d_vertex
 {
-    // this structure uses 6 bytes
-    int16_t x0: 12;
-    int16_t y0: 11;
-    int16_t x1: 12;
-    int16_t y1: 11;
+    // this structure uses 3 bytes
+    int16_t x: 12;
+    int16_t y: 12;
 
-    frustum_plane()
-        : x0(0), y0(0), x1(0), y1(0)
+    frustum_plane_2d_vertex()
+        : x(0), y(0)
     {
     }
 
-    frustum_plane(uint16_t _x0, uint16_t _y0, uint16_t _x1, uint16_t _y1)
-        : x0(_x0 - 672 + 8) , y0(384 - _y0 - 8) , x1(_x1 - 672 + 8) , y1(384 - _y1 - 8)
+    frustum_plane_2d_vertex(uint16_t _x, uint16_t _y)
+        : x(_x - 672 + 8) , y(384 - _y - 8)
     {
     }
     
-    void to_vec3d(vec3d* target)
+    void to_vec3d(const frustum_plane_2d_vertex& other, vec3d* target)
     {
-        vec3d a((int32_t)x0 << 8, (int32_t)y0 << 8, -172032);
-        *target = vec3d((int32_t)x1 << 8, (int32_t)y1 << 8, -172032);
+        vec3d a((int32_t)x << 8, (int32_t)y << 8, -172032);
+        *target = vec3d((int32_t)other.x << 8, (int32_t)other.y << 8, -172032);
         *target = target->cross(a);
     }
 };
@@ -412,72 +409,46 @@ struct r_camera
     void set_current_segment(uint8_t segment_index);
 };
 
-struct render_job
-{
-    uint8_t segment;
-    uint8_t from_segment;
-    uint8_t first_frustum_plane;
-    uint8_t frustum_plane_count;
-
-    render_job()
-        : segment(0)
-        , from_segment(0)
-        , first_frustum_plane(0)
-        , frustum_plane_count(0)
-    {}
-
-    render_job(uint8_t _segment, uint8_t _from_segment, uint8_t _first_frustum_plane, uint8_t _frustum_plane_count)
-        : segment(_segment)
-        , from_segment(_from_segment)
-        , first_frustum_plane(_first_frustum_plane)
-        , frustum_plane_count(_frustum_plane_count)
-    {}
-};
-
-struct render_job_list;
 struct wall_loop_info;
 
-frustum_plane shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
-render_job_list* next_render_jobs;
-render_job_list* current_render_jobs;
+uint8_t frustum_stack[FRUSTUM_STACK_SIZE];
+uint8_t* frustum_stack_end = frustum_stack + FRUSTUM_STACK_SIZE;
+uint8_t* frustum_stack_pointer = frustum_stack_end;
 segment temp_segment_buffer;
 vec3d current_frustum_normals[8];
 uint8_t current_frustum_normal_count;
 
-struct render_job_list
+frustum_plane_2d_vertex* push_frustum(uint8_t segment, uint8_t vertex_count)
 {
-    uint8_t job_count;
-    uint8_t frustum_plane_count;
-    uint8_t frustum_plane_offset;
-    render_job jobs[MAX_JOB_COUNT];
+    // calculate how much frustum stack memory we'll need
+    size_t s = vertex_count * sizeof(frustum_plane_2d_vertex) + 2;
+    // if we don't have enough space left, return null pointer
+    if (frustum_stack_pointer - s < frustum_stack)
+        return NULL;
+    // decrease stack pointer
+    frustum_stack_pointer -= s;
+    // store data
+    *(frustum_stack_pointer + 0) = segment;
+    *(frustum_stack_pointer + 1) = vertex_count;
+    #ifdef DEBUG
+        if (frustum_stack_end - frustum_stack_pointer > max_frustum_stack_size)
+            max_frustum_stack_size = frustum_stack_end - frustum_stack_pointer;
+    #endif
+    // we succeeded, return memory position the caller can use
+    // to fill in vertices
+    return (frustum_plane_2d_vertex*)(frustum_stack_pointer + 2);
+}
 
-    render_job_list()
-        : job_count(0)
-        , frustum_plane_count(0)
-        , frustum_plane_offset(0)
-    {
-    }
-
-    render_job_list(const render_job_list& other)
-        : job_count(other.job_count)
-        , frustum_plane_count(other.frustum_plane_count)
-        , frustum_plane_offset(other.frustum_plane_offset)
-    {
-        memcpy(jobs, other.jobs, sizeof(jobs));
-    }
-
-    // return vec3d offset for requested number of frustum planes or -1 if no more space available
-    // (in that case, the segment just won't be rendered)
-    int add_job(uint8_t segment, uint8_t from_segment, uint8_t requested_frustum_plane_count)
-    {
-        if (job_count >= MAX_JOB_COUNT || (next_render_jobs->frustum_plane_count + current_render_jobs->frustum_plane_count + requested_frustum_plane_count > MAX_SHARED_FRUSTUM_PLANES))
-            return -1;
-        frustum_plane_offset = (frustum_plane_offset + MAX_SHARED_FRUSTUM_PLANES - requested_frustum_plane_count) % MAX_SHARED_FRUSTUM_PLANES;
-        jobs[job_count++] = render_job(segment, from_segment, (frustum_plane_offset + 1) % MAX_SHARED_FRUSTUM_PLANES, requested_frustum_plane_count);
-        frustum_plane_count += requested_frustum_plane_count;
-        return (frustum_plane_offset + 1) % MAX_SHARED_FRUSTUM_PLANES;
-    }
-};
+frustum_plane_2d_vertex* pop_frustum(uint8_t* segment, uint8_t* vertex_count)
+{
+    if (frustum_stack_pointer == frustum_stack_end)
+        return NULL;
+    *segment = *(frustum_stack_pointer + 0);
+    *vertex_count = *(frustum_stack_pointer + 1);
+    frustum_plane_2d_vertex* p = (frustum_plane_2d_vertex*)(frustum_stack_pointer + 2);
+    frustum_stack_pointer += (*vertex_count) * sizeof(frustum_plane_2d_vertex) + 2;
+    return p;
+}
 
 #ifdef ENABLE_SHOOTING
     // 10 bytes per shot
@@ -513,8 +484,6 @@ void r_camera::set_current_segment(uint8_t segment_index)
     byte num_shots;
     shot shots[MAX_SHOTS];
 #endif
-
-render_job_list render_jobs_0, render_jobs_1;
 
 bool allow_steering = true;
 r_camera camera;
@@ -654,9 +623,9 @@ void title_screen()
     camera = r_camera();
     camera.at = vec3d((int32_t)(1.5 * 65536), (int32_t)(4.5 * 65536), (int32_t)(9.75 * 65536));
     camera.set_current_segment(0);
-//     camera.at = vec3d((int32_t)(16.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(13.0 * 65536));
-//     camera.set_current_segment(11);
-//     camera.yaw = -80000;
+//     camera.at = vec3d((int32_t)(19.5 * 65536), (int32_t)(4.5 * 65536), (int32_t)(10.5 * 65536));
+//     camera.set_current_segment(9);
+//     camera.yaw = 70000;
     #ifdef ENABLE_SHOOTING
         num_shots = 0;
     #endif
@@ -676,8 +645,6 @@ void setup()
 #endif
     gb.begin();
     title_screen();
-    next_render_jobs = &render_jobs_0;
-    current_render_jobs = &render_jobs_1;
     camera.width = LCDWIDTH;
     camera.height = LCDHEIGHT;
 }
@@ -1366,7 +1333,6 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d& c
     }
     target->num_vertices = target_vertex_index;
     target->draw_edges = target_draw_edges;
-//     target->draw_edges = 0xff;
 //     LOG("Got %d vertices after clipping\n", target->num_vertices);
 }
 
@@ -1444,10 +1410,6 @@ polygon* render_polygon(polygon* p, byte min_vertex_count = 3)
         #endif
         {
             project_vertex(p->vertices[k], tv);
-//             int32_t z1 = (((-1L) << 24) / p->vertices[k].z);
-//             tv[0] = (((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE) + ((((p->vertices[k].v[0] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
-//             tv[1] = (((SCREEN_RESOLUTION[1] - 1) << FIXED_POINT_SCALE) - ((((p->vertices[k].v[1] * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
-//             LOG("PROJ [%d] %d %d\n", k, tv[0] >> FIXED_POINT_SCALE, tv[1] >> FIXED_POINT_SCALE);
             draw_pixel(tv[0], tv[1]);
         }
 
@@ -1456,8 +1418,6 @@ polygon* render_polygon(polygon* p, byte min_vertex_count = 3)
             first[0] = tv[0];
             first[1] = tv[1];
         }
-        // TODO: Find out why memcpy doesn't cut it here and further down as well
-//             memcpy(first, tv, 4);
         else
         {
             if ((p->draw_edges >> (k - 1)) & 1)
@@ -1465,7 +1425,6 @@ polygon* render_polygon(polygon* p, byte min_vertex_count = 3)
         }
         last[0] = tv[0];
         last[1] = tv[1];
-//         memcpy(last, tv, 4);
     }
     if ((p->draw_edges >> (p->num_vertices - 1)) & 1)
         draw_line_fixed_point(last, first);
@@ -1709,51 +1668,13 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
         {
             if ((((segments_touched[wall_info->adjacent_segment_index >> 3] >> (wall_info->adjacent_segment_index & 7)) & 1) == 0))
             {
-                #ifdef DEBUG
-                    int temp = current_render_jobs->frustum_plane_count + next_render_jobs->frustum_plane_count + clipped_portal->num_vertices;
-                    if (max_frustum_planes < temp)
-                        max_frustum_planes = temp;
-                #endif
-                int p = next_render_jobs->add_job(wall_info->adjacent_segment_index, callback_info->segment_index, clipped_portal->num_vertices);
-                if (p > -1)
+                if (frustum_plane_2d_vertex* p = push_frustum(wall_info->adjacent_segment_index, clipped_portal->num_vertices))
                 {
-                    // fill in frustum planes...
-                    for (int k = 0; k < clipped_portal->num_vertices; k++)
+                    for (uint8_t k = 0; k < clipped_portal->num_vertices; ++k)
                     {
-                        byte next_k = (k + 1) % clipped_portal->num_vertices;
-                        LINE_COORDINATE_TYPE tv0[2], tv1[2];
-                        project_vertex(clipped_portal->vertices[k], tv0);
-                        project_vertex(clipped_portal->vertices[next_k], tv1);
-                        shared_frustum_planes[p] = frustum_plane(tv0[0], tv0[1], tv1[0], tv1[1]);
-                        p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
-                        
-//                         vec3d v[2] = {clipped_portal->vertices[next_k], clipped_portal->vertices[k]};
-//                         #ifdef FRUSTUM_PLANE_CALCULATION_PREMULTIPLY
-//                             // determine if we need to premultiply vectors so that we don't get hiccups with 
-//                             // vertices close to the viewer (close to the apex of the viewing frustum)
-//                             byte max_log2 = 0;
-//                             for (byte vi = 0; vi < 2; ++vi)
-//                             {
-//                                 for (byte vj = 0; vj < 3; ++vj)
-//                                 {
-//                                     byte test_log2 = log2(v[vi].v[vj]);
-//                                     if (test_log2 > max_log2)
-//                                         max_log2 = test_log2;
-//                                 }
-//                             }
-//                             
-//                             if (max_log2 < 16)
-//                                 for (byte vi = 0; vi < 2; ++vi)
-//                                     v[vi] <<= 16 - max_log2;
-//                         #endif
-//                         
-//                         vec3d n = v[0].cross(v[1]);
-//                         if (n.maximize_length_16())
-//                         {
-//                             // only add the frustum plane if it's not degenerate
-// //                             shared_frustum_planes[p] = vec3d_16(n.x, n.y, n.z);
-// //                             p = (p + 1) % MAX_SHARED_FRUSTUM_PLANES;
-//                         }
+                        LINE_COORDINATE_TYPE tv[2];
+                        project_vertex(clipped_portal->vertices[k], tv);
+                        p[k] = frustum_plane_2d_vertex(tv[0], tv[1]);
                     }
                 }
             }
@@ -1763,7 +1684,7 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     return true;
 }
 
-void render_segment(uint8_t segment_index, uint8_t frustum_count, uint8_t frustum_offset, uint8_t from_segment = 255)
+void render_segment(uint8_t segment_index, uint8_t frustum_count, frustum_plane_2d_vertex* frustum_vertices, uint8_t from_segment = 255)
 {
     LOG("Rendering segment: %d (from: %d)\n", segment_index, from_segment);
     #ifdef ENABLE_MAP
@@ -1796,10 +1717,10 @@ void render_segment(uint8_t segment_index, uint8_t frustum_count, uint8_t frustu
     callback_info.line = (polygon*)&_line;
     callback_info.segment_index = segment_index;
     callback_info.current_segment = current_segment;
-
+    
     current_frustum_normal_count = frustum_count;
     for (uint8_t i = 0; i < frustum_count; ++i)
-        shared_frustum_planes[(frustum_offset + i) % MAX_SHARED_FRUSTUM_PLANES].to_vec3d(&current_frustum_normals[i]);
+        frustum_vertices[i].to_vec3d(*(frustum_vertices + ((i + 1) % frustum_count)), &current_frustum_normals[i]);
     
     loop_through_segment_walls(segment_index, current_segment, true, &render_segment_callback, &callback_info);
     
@@ -1843,41 +1764,48 @@ void update_scene()
     faces_drawn = 0;
     segments_drawn = 0;
 #endif
-    *next_render_jobs = render_job_list();
-    // prepare camera frustum
-    // PRO TIP: put the planes first which discard the most faces (left and right)
-//     shared_frustum_planes[0] = vec3d_16(  22969, 0, -23369);
-//     shared_frustum_planes[1] = vec3d_16( -22969, 0, -23369);
-//     shared_frustum_planes[2] = vec3d_16(0,  32268, -18689);
-//     shared_frustum_planes[3] = vec3d_16(0, -32268, -18689);
-    shared_frustum_planes[0] = frustum_plane(0, 0, 0, 767);       // left
-    shared_frustum_planes[1] = frustum_plane(1343, 767, 1343, 0); // right
-    shared_frustum_planes[2] = frustum_plane(0, 767, 1343, 767);  // bottom
-    shared_frustum_planes[3] = frustum_plane(1343, 0, 0, 0);  // top
-    current_render_jobs->frustum_plane_offset = 0;
-    next_render_jobs->frustum_plane_offset = MAX_SHARED_FRUSTUM_PLANES - 1;
-    // render current segment first
-    render_segment(camera.current_segment_index, 4, 0);
-    // now render all segments visible through portals until we're done
-    byte max_loop_count = MAX_RENDER_ADJACENT_SEGMENTS;
-    while (next_render_jobs->job_count > 0 && max_loop_count > 0)
+    /*
+     * This is the new rendering strategy which should use less RAM:
+     * 
+     * Initialize an empty stack of segment / frustum lines entries.
+     * Each entry contains a segment to be drawn plus the frustum (in 2D)
+     * through which it should be drawn.
+     * 
+     * Push the camera's current segment on the stack, with the frustum
+     * constrained by the screen dimensions.
+     * 
+     * While the stack is not empty:
+     * 
+     *   - pop an entry from the stack
+     *   - convert the 2D frustum lines to 3D frustum planes
+     *   - use the 3D frustum planes to render the segment
+     *   - if we come across a portal:
+     *     - push a new entry on the stack with the adjacent segment
+     *       and the clipped screen space coordinates defining the
+     *       new 2D frustum lines
+     *     - that is, if the stack isn't full yet, heh...
+     *
+     * With this setup we can use high precision frustum plane vectors
+     * because we always deal with one set at most (max. 8 vectors,
+     * 12 bytes each = 96 bytes total). Information required for
+     * recursive rendering is minimal because we only store the segment
+     * ID and the 2D planes (6 bytes per actually used vertex), ranging
+     * from 24 to 48 bytes per segment. 
+     */
+    frustum_plane_2d_vertex* p;
+    if (p = push_frustum(camera.current_segment_index, 4))
     {
-        max_loop_count--;
-        render_job_list *temp = current_render_jobs;
-        current_render_jobs = next_render_jobs;
-        next_render_jobs = temp;
-        *next_render_jobs = render_job_list();
-        current_render_jobs->frustum_plane_offset = (current_render_jobs->frustum_plane_offset + 1) % MAX_SHARED_FRUSTUM_PLANES;
-        next_render_jobs->frustum_plane_offset = (current_render_jobs->frustum_plane_offset + MAX_SHARED_FRUSTUM_PLANES - 1) % MAX_SHARED_FRUSTUM_PLANES;
-        for (byte i = 0; i < current_render_jobs->job_count; i++)
-        {
-            const render_job& job = current_render_jobs->jobs[i];
-            render_segment(job.segment, job.frustum_plane_count,
-                           job.first_frustum_plane,
-                           job.from_segment);
-        }
+        p[0] = frustum_plane_2d_vertex(0, 0);
+        p[1] = frustum_plane_2d_vertex(0, 767);
+        p[2] = frustum_plane_2d_vertex(1343, 676);
+        p[3] = frustum_plane_2d_vertex(1343, 0);
     }
-    
+    uint8_t segment, vertex_count;
+    while (p = pop_frustum(&segment, &vertex_count))
+    {
+        LOG("Rendering segment %d with %d vertices.\n", segment, vertex_count);
+        render_segment(segment, vertex_count, p);
+    }
     uint32_t current_micros = micros();
     micros_per_frame = current_micros - last_micros;
     last_micros = current_micros;
@@ -1913,17 +1841,6 @@ void update_scene()
 //         gb.display.print(sizeof(render_segment_callback_info));
 //         gb.display.print(" ");
         
-//         wall_loop_info wall_info;
-//         render_job_list render_jobs_0, render_jobs_1;
-//         frustum_plane shared_frustum_planes[MAX_SHARED_FRUSTUM_PLANES];
-//         render_job_list* next_render_jobs;
-//         render_job_list* current_render_jobs;
-//         segment temp_segment_buffer;
-//         r_camera camera;
-//         polygon4 _wall;
-//         polygon4 _portal;
-//         polygon2 _line;
-//         polygon clipped_polygon;
         #ifdef SHOW_FRAME_TIME
             gb.display.print((micros() - start_micros) / 1000);
             gb.display.print(F(" ms "));
@@ -1956,6 +1873,8 @@ void update_scene()
             gb.display.print(camera.current_segment_index);
             gb.display.print("/FD:");
             gb.display.print(faces_drawn);
+            gb.display.print("/FSS:");
+            gb.display.print(max_frustum_stack_size);
 //             gb.display.print("/MFP:");
 //             gb.display.print(max_frustum_planes);
             
