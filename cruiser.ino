@@ -8,7 +8,7 @@ const int32_t PI1 = 205887;
 #define FRUSTUM_STACK_SIZE 48
 // #define DEBUG
 // #define MONITOR_RAM
-#define SHOW_FRAME_TIME
+// #define SHOW_FRAME_TIME
 #define COLLISION_DETECTION
 // #define SHOW_TITLE_SCREEN
 // #define ENABLE_STRAFE
@@ -1725,8 +1725,8 @@ void render_segment(uint8_t segment_index, uint8_t frustum_count, frustum_plane_
     loop_through_segment_walls(segment_index, current_segment, true, &render_segment_callback, &callback_info);
     
     // render object at (1, 8, 0.5)
-    if (segment_index == 0)
-        render_sprite((int32_t)(1.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(8.0 * 65536));
+//     if (segment_index == 0)
+//         render_sprite((int32_t)(1.0 * 65536), (int32_t)(4.5 * 65536), (int32_t)(8.0 * 65536));
     
     #ifdef ENABLE_SHOOTING
         // render shots in this segment
@@ -1815,6 +1815,7 @@ void update_scene()
         else
     #endif
     {
+        gb.display.print("    LUNAR OUTPOST");
 //         gb.display.print(" wi:");
 //         gb.display.print(sizeof(wall_info));
 //         gb.display.print(" rj01:");
