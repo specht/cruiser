@@ -16,8 +16,8 @@ const int32_t PI1 = 205887;
 #define ENABLE_SHOOTING
 #define MAX_SHOTS 12
 
-#define PREMULTIPLIED_WIDTH 1328
-#define PREMULTIPLIED_HEIGHT 752
+#define SCREEN_WIDTH 84
+#define SCREEN_HEIGHT 48
 
 #ifndef PORT_ENABLED
 #define SUB_PIXEL_ACCURACY
@@ -64,8 +64,6 @@ int32_t lsin(int32_t a);
 // save 32 bytes of code by not defining a separate cosine function... heh!
 #define lcos(x) lsin((x) + 102943)
 int32_t lsqrt(int32_t a);
-
-byte SCREEN_RESOLUTION[2] = {LCDWIDTH, LCDHEIGHT};
 
 struct vec3d_16
 {
@@ -271,7 +269,7 @@ struct frustum_plane_2d_vertex
     }
 
     frustum_plane_2d_vertex(uint16_t _x, uint16_t _y)
-        : x(_x - 672 + 8) , y(384 - _y - 8)
+        : x(_x - (SCREEN_WIDTH << FIXED_POINT_SCALE >> 1)) , y((SCREEN_HEIGHT << FIXED_POINT_SCALE >> 1) - _y)
     {
     }
     
@@ -1364,8 +1362,8 @@ void transform_world_space_to_view_space(vec3d* v, byte count = 1)
 void project_vertex(const vec3d& p, LINE_COORDINATE_TYPE* tv)
 {
     int32_t z1 = (((-1L) << 24) / p.z);
-    tv[0] = (((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE) + ((((p.x * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
-    tv[1] = (((SCREEN_RESOLUTION[1] - 1) << FIXED_POINT_SCALE) - ((((p.y * ((SCREEN_RESOLUTION[0] - 1) << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+    tv[0] = ((SCREEN_WIDTH << FIXED_POINT_SCALE) + ((((p.x * (SCREEN_WIDTH << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
+    tv[1] = ((SCREEN_HEIGHT << FIXED_POINT_SCALE) - ((((p.y * (SCREEN_WIDTH << FIXED_POINT_SCALE)) >> 8) * z1) >> 16)) >> 1;
 }
 
 polygon* render_polygon(polygon* p, byte min_vertex_count = 3)
@@ -1799,10 +1797,10 @@ void update_scene()
     frustum_plane_2d_vertex* p;
     if (p = push_frustum(camera.current_segment_index, 4))
     {
-        p[0] = frustum_plane_2d_vertex(0 - 8, 0 - 8);
-        p[1] = frustum_plane_2d_vertex(0 - 8, 768 - 8);
-        p[2] = frustum_plane_2d_vertex(1344 - 8, 768 - 8);
-        p[3] = frustum_plane_2d_vertex(1344 - 8, 0 - 8);
+        p[0] = frustum_plane_2d_vertex(0, 0);
+        p[1] = frustum_plane_2d_vertex(0, 768);
+        p[2] = frustum_plane_2d_vertex(1344, 768);
+        p[3] = frustum_plane_2d_vertex(1344, 0);
     }
     uint8_t segment, vertex_count;
     while (p = pop_frustum(&segment, &vertex_count))
@@ -1819,7 +1817,7 @@ void update_scene()
         else
     #endif
     {
-        gb.display.print("    LUNAR OUTPOST");
+//         gb.display.print("    LUNAR OUTPOST");
 //         gb.display.print(" wi:");
 //         gb.display.print(sizeof(wall_info));
 //         gb.display.print(" rj01:");
