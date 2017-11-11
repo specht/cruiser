@@ -1202,6 +1202,7 @@ void move_player()
             
         if (shot_stopped_by_door || wall_collided != 0xff)
         {
+            LOG("Removing shot\n");
             // flare hit a wall, remove the shot
             if (num_shots > 1)
                 memcpy(&shots[i], &shots[num_shots - 1], sizeof(shot));
@@ -1224,8 +1225,8 @@ void move_player()
 // void clip_polygon_against_plane(polygon* result, const vec3d_16& clip_plane_normal, polygon* source)
 void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d& clip_plane_normal)
 {
-//     LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
-//     LOG("Got %d vertices before clipping\n", p->num_vertices);
+    LOG("Clipping polygon against %d %d %d\n", clip_plane_normal.x, clip_plane_normal.y, clip_plane_normal.z);
+    LOG("Got %d vertices before clipping\n", source->num_vertices);
     // TODO: In order to save a lot of RAM, we should investigate whether clipping can be done in place
     // so that we don't have to allocate RAM for the destination polyon
     // IN PLACE CLIPPING:
@@ -1333,7 +1334,7 @@ void clip_polygon_against_plane(polygon* source, polygon* target, const vec3d& c
     }
     target->num_vertices = target_vertex_index;
     target->draw_edges = target_draw_edges;
-//     LOG("Got %d vertices after clipping\n", target->num_vertices);
+    LOG("Got %d vertices after clipping\n", target->num_vertices);
 }
 
 void transform_world_space_to_view_space(vec3d* v, byte count = 1)
@@ -1395,7 +1396,7 @@ polygon* render_polygon(polygon* p, byte min_vertex_count = 3)
     LINE_COORDINATE_TYPE first[2];
     LINE_COORDINATE_TYPE last[2];
     
-    LOG("Drawing polygon with %d vertices.\n", p->num_vertices);
+//     LOG("Drawing polygon with %d vertices.\n", p->num_vertices);
 
     for (int k = 0; k < p->num_vertices; k++)
     {
@@ -1684,9 +1685,8 @@ bool render_segment_callback(wall_loop_info* wall_info, void* _callback_info)
     return true;
 }
 
-void render_segment(uint8_t segment_index, uint8_t frustum_count, frustum_plane_2d_vertex* frustum_vertices, uint8_t from_segment = 255)
+void render_segment(uint8_t segment_index, uint8_t frustum_count, frustum_plane_2d_vertex* frustum_vertices)
 {
-    LOG("Rendering segment: %d (from: %d)\n", segment_index, from_segment);
     #ifdef ENABLE_MAP
         if (map_mode)
         {
@@ -1718,9 +1718,13 @@ void render_segment(uint8_t segment_index, uint8_t frustum_count, frustum_plane_
     callback_info.segment_index = segment_index;
     callback_info.current_segment = current_segment;
     
+    LOG("Frustum count: %d\n", frustum_count);
     current_frustum_normal_count = frustum_count;
     for (uint8_t i = 0; i < frustum_count; ++i)
+    {
         frustum_vertices[i].to_vec3d(*(frustum_vertices + ((i + 1) % frustum_count)), &current_frustum_normals[i]);
+        LOG("Frustum line %d: %d / %d\n", i, frustum_vertices[i].x, frustum_vertices[i].y);
+    }
     
     loop_through_segment_walls(segment_index, current_segment, true, &render_segment_callback, &callback_info);
     
@@ -1795,10 +1799,10 @@ void update_scene()
     frustum_plane_2d_vertex* p;
     if (p = push_frustum(camera.current_segment_index, 4))
     {
-        p[0] = frustum_plane_2d_vertex(0, 0);
-        p[1] = frustum_plane_2d_vertex(0, 767);
-        p[2] = frustum_plane_2d_vertex(1343, 676);
-        p[3] = frustum_plane_2d_vertex(1343, 0);
+        p[0] = frustum_plane_2d_vertex(0 - 8, 0 - 8);
+        p[1] = frustum_plane_2d_vertex(0 - 8, 768 - 8);
+        p[2] = frustum_plane_2d_vertex(1344 - 8, 768 - 8);
+        p[3] = frustum_plane_2d_vertex(1344 - 8, 0 - 8);
     }
     uint8_t segment, vertex_count;
     while (p = pop_frustum(&segment, &vertex_count))
